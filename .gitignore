@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+data/cache/
+data/*.db
+.pytest_cache/
+dist/
+HANDOFF.md
+DECISIONS.md
