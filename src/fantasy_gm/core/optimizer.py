@@ -1,0 +1,123 @@
+"""
+Deterministic lineup optimizer.
+
+Given a set of projected points per player, finds the legal lineup
+that maximizes total projected points. Uses greedy slot-filling with
+a backtracking assignment — not a full ILP solver, but correct for
+standard fantasy roster structures (<=16 players, <=10 starter slots).
+
+No LLM. No randomness. Given the same inputs, always returns the same lineup.
+"""
+from __future__ import annotations
+
+from itertools import permutations
+
+from fantasy_gm.core.roster import FLEX_ELIGIBLE, SUPER_FLEX_ELIGIBLE, slot_accepts
+from fantasy_gm.models import LeagueSettings, Player, Position, RosterPlayer, RosterSlot
+
+
+def optimize_lineup(
+    players: list[Player],
+    projections: dict[str, float],  # platform_id -> projected points
+    settings: LeagueSettings,
+) -> list[RosterPlayer]:
+    """
+    Return the optimal legal lineup as a list of RosterPlayer.
+
+    Players not in projections are assumed to project 0 points.
+    Players not assigned to a starter slot are placed on bench.
+
+    Uses a greedy-with-exhaustion approach: fills the most constrained
+    slots first (QB, K, DST before FLEX) to maximize correct assignment.
+    """
+    starter_slots = [s for s in settings.roster_slots if s.is_starter]
+    bench_slots = [s for s in settings.roster_slots if not s.is_starter]
+
+    # Sort players by projection descending
+    ranked = sorted(players, key=lambda p: projections.get(p.platform_id, 0.0), reverse=True)
+
+    best_score, best_assignment = _assign(starter_slots, ranked, projections)
+
+    if best_assignment is None:
+        # Fallback: return all players on bench (should not happen with valid roster)
+        result = []
+        for i, player in enumerate(players):
+            slot = bench_slots[i] if i < len(bench_slots) else bench_slots[-1]
+            result.append(RosterPlayer(player=player, slot=slot.position, is_starter=False))
+        return result
+
+    assigned_ids = {p.platform_id for p in best_assignment.values()}
+    result: list[RosterPlayer] = []
+
+    # best_assignment keys are slot indices into starter_slots
+    for slot_idx, player in best_assignment.items():
+        slot = starter_slots[slot_idx]
+        result.append(RosterPlayer(player=player, slot=slot.position, is_starter=True))
+
+    bench_iter = iter(bench_slots)
+    for player in ranked:
+        if player.platform_id not in assigned_ids:
+            try:
+                slot = next(bench_iter)
+            except StopIteration:
+                slot = RosterSlot(slot_id="be_overflow", position=Position.BENCH, is_starter=False)
+            result.append(RosterPlayer(player=player, slot=slot.position, is_starter=False))
+
+    return result
+
+
+def _assign(
+    slots: list[RosterSlot],
+    players: list[Player],
+    projections: dict[str, float],
+) -> tuple[float, dict[int, Player] | None]:
+    """
+    Backtracking assignment: fills slots left to right, trying players
+    in projection order. Returns (best_score, {slot_index: Player}).
+
+    Slots are sorted most-constrained first to prune the search space.
+    Uses slot index as key (RosterSlot is a Pydantic model, not hashable).
+    """
+    def constraint_count(slot: RosterSlot) -> int:
+        return sum(1 for p in players if slot_accepts(slot.position, p.position))
+
+    # Sort indices by constraint count so we fill the tightest slots first
+    ordered_indices = sorted(range(len(slots)), key=lambda i: constraint_count(slots[i]))
+
+    best: list[tuple[float, dict[int, Player]]] = [(float("-inf"), {})]
+
+    def backtrack(step: int, used_ids: set[str], current: dict[int, Player]) -> None:
+        if step == len(ordered_indices):
+            score = sum(projections.get(p.platform_id, 0.0) for p in current.values())
+            if score > best[0][0]:
+                best[0] = (score, dict(current))
+            return
+        slot_idx = ordered_indices[step]
+        slot = slots[slot_idx]
+        candidates = [
+            p for p in players
+            if p.platform_id not in used_ids and slot_accepts(slot.position, p.position)
+        ]
+        if not candidates:
+            return  # can't fill this slot — prune branch
+        for player in candidates:
+            current[slot_idx] = player
+            used_ids.add(player.platform_id)
+            backtrack(step + 1, used_ids, current)
+            del current[slot_idx]
+            used_ids.remove(player.platform_id)
+
+    backtrack(0, set(), {})
+    score, assignment = best[0]
+    if not assignment:
+        return float("-inf"), None
+    return score, assignment
+
+
+def projected_score(lineup: list[RosterPlayer], projections: dict[str, float]) -> float:
+    """Sum projected points for all starters in a lineup."""
+    return sum(
+        projections.get(rp.player.platform_id, 0.0)
+        for rp in lineup
+        if rp.is_starter
+    )
