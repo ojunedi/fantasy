@@ -121,6 +121,23 @@ class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
 
 
+_TRANSIENT_MARKERS = ("503", "500", "502", "504", "unavailable",
+                      "high demand", "overloaded", "internal error")
+
+
+def _is_transient(exc: Exception) -> bool:
+    """True for provider-side hiccups worth another (rate-limited) attempt.
+
+    Deliberately excludes 429: retrying a rate-limit rejection is what produced
+    the original quota storms, and the client's own retries already sit below
+    the limiter where they cannot be paced.
+    """
+    text = f"{type(exc).__name__}: {exc}".lower()
+    if "429" in text or "resource_exhausted" in text or "rate_limit" in text:
+        return False
+    return any(marker in text for marker in _TRANSIENT_MARKERS)
+
+
 class GraphAgent(ABC):
     """A LangGraph agent: agent ⇄ tools loop ending on a terminal tool.
 
@@ -190,8 +207,21 @@ class GraphAgent(ABC):
                     "any more read/compute tools. Using only what you have already "
                     f"gathered, call exactly one terminal tool now ({terminal}); if the "
                     "data is insufficient, call abstain.")))
-            response = bound.invoke(prompt)
-            ctx.record_llm_call()
+            # Retry transient provider errors here rather than in the client, so
+            # each attempt passes through the shared rate limiter and stays
+            # inside the requests/minute bound.
+            attempts = max(0, self.config.transient_retries) + 1
+            for attempt in range(attempts):
+                try:
+                    response = bound.invoke(prompt)
+                    ctx.record_llm_call()
+                    break
+                except Exception as exc:
+                    ctx.record_llm_call()  # it reached the provider either way
+                    if attempt + 1 >= attempts or not _is_transient(exc):
+                        raise
+                    print(f"  transient provider error, retrying "
+                          f"({attempt + 1}/{attempts - 1}): {exc}", flush=True)
             return {"messages": [response]}
 
         def route_after_tools(state: AgentState) -> str:

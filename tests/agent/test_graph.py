@@ -177,6 +177,46 @@ def test_optimize_lineup_tool_uses_adjusted_projections(ctx):
     assert "Player wr1" in out_adj
 
 
+class _FlakyModel:
+    """Raises a scripted error on the first call(s), then abstains."""
+    def __init__(self, errors):
+        self.errors = list(errors)
+        self.calls = 0
+
+    def bind_tools(self, tools):
+        return self
+
+    def invoke(self, messages):
+        self.calls += 1
+        if self.errors:
+            raise RuntimeError(self.errors.pop(0))
+        return AIMessage(content="", tool_calls=[
+            {"name": "abstain", "args": {"missing_information": ["x"],
+                                         "what_you_would_need": "y",
+                                         "memo": "z"}, "id": "t1"},
+        ])
+
+
+def test_transient_provider_error_is_retried(ctx):
+    """A 503 gets another attempt — through the rate limiter, not under it."""
+    model = _FlakyModel(["503 UNAVAILABLE - model experiencing high demand"])
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    agent = LineupGraphAgent(AgentConfig(), llm=model, checkpoint_path=tmp)
+    record = agent.decide(ctx, verbose=False)
+    assert model.calls == 2                        # failed once, then succeeded
+    assert record.recommendation.get("abstained")
+
+
+def test_rate_limit_error_is_not_retried(ctx):
+    """429 must propagate — retrying a quota rejection is what caused the storms."""
+    model = _FlakyModel(["429 RESOURCE_EXHAUSTED - quota exceeded"])
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    agent = LineupGraphAgent(AgentConfig(), llm=model, checkpoint_path=tmp)
+    with pytest.raises(RuntimeError, match="429"):
+        agent.decide(ctx, verbose=False)
+    assert model.calls == 1
+
+
 def test_llm_call_budget_caps_the_loop(ctx):
     """A model that never terminates is stopped after max_llm_calls LLM calls."""
     class LoopingModel:

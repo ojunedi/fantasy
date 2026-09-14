@@ -81,6 +81,11 @@ class AgentConfig:
     trace: str = os.environ.get("FANTASY_GM_TRACE", "compact")
     # "", "none", "low", "medium", "high" — provider-specific; "" means unset.
     reasoning_effort: str = os.environ.get("FANTASY_GM_REASONING_EFFORT", "")
+    # Extra attempts the *agent loop* makes when the provider returns a transient
+    # server error (503 "high demand", 500/502/504). These go back through the
+    # shared rate limiter, so unlike the client's own retries they stay inside
+    # the requests/minute bound. Never applied to 429s.
+    transient_retries: int = int(os.environ.get("FANTASY_GM_TRANSIENT_RETRIES", "2"))
 
     def __post_init__(self) -> None:
         if not self.model:
