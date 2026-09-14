@@ -123,6 +123,52 @@ def _chip_settings():
     )
 
 
+def test_need_requires_a_material_gap_not_just_below_baseline():
+    """Being a few ranks under the last starter is 'thin', not a NEED.
+
+    Guards the real-league case: a QB15 in a 1-QB league starts every week and
+    is not a hole to trade for, but a team whose only QB is worthless is.
+    """
+    from fantasy_gm.models import Player, PlayerStatus, Roster, RosterPlayer
+
+    slots = [
+        RosterSlot(slot_id="qb", position=Position.QB, is_starter=True),
+        RosterSlot(slot_id="be0", position=Position.BENCH, is_starter=False),
+    ]
+    settings = LeagueSettings(
+        platform=Platform.ESPN, league_id="t", season=2026, team_count=2,
+        roster_slots=slots, scoring_rules=ScoringRules(rules=[]),
+        waiver_type=WaiverType.SNAKE, faab_budget=None,
+        playoff_start_week=15, playoff_weeks=[15, 16, 17],
+        regular_season_weeks=list(range(1, 15)),
+    )
+    # League QB pool: 1000, 600, 450, 200 -> baseline is the 2nd (600).
+    market = {p: MarketValue(value=v, position="QB", position_rank=i + 1, overall_rank=i + 1)
+              for i, (p, v) in enumerate([("a", 1000), ("b", 600), ("d", 450), ("c", 200)])}
+
+    def ctx_for(pid):
+        ctx = TradeToolContext(adapter=None, settings=settings, team_id="8",
+                               week=1, season=2026, market_fn=lambda **k: market)
+        ctx._player_index = {p: {"position": Position.QB, "name": p, "team": "X"}
+                             for p in market}
+        ctx._weekly_proj = {p: 10.0 for p in market}
+        player = Player(platform_id=pid, name=pid, position=Position.QB,
+                        eligible_positions=[Position.QB], status=PlayerStatus.ACTIVE)
+        ctx._roster = Roster(team_id="8", team_name="T", owner_name="Me", week=1, season=2026,
+                             players=[RosterPlayer(player=player, slot=Position.QB,
+                                                   is_starter=True)])
+        return ctx
+
+    # 450 is under the 600 baseline but clears 0.6 * 600 = 360 -> thin, not a need.
+    thin = ctx_for("d").roster_needs(ctx_for("d")._roster)[Position.QB]
+    assert thin["need"] is False
+    assert thin["thin"] is True
+
+    # 200 is materially below startable -> a genuine need.
+    real = ctx_for("c").roster_needs(ctx_for("c")._roster)[Position.QB]
+    assert real["need"] is True
+
+
 def test_trade_chips_includes_bench_and_respects_flex():
     """Depth beyond the starting lineup is tradeable even below replacement."""
     from fantasy_gm.models import Player, PlayerStatus, Roster, RosterPlayer

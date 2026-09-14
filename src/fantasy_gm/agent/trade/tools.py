@@ -33,6 +33,14 @@ TERMINAL_TOOLS = {"propose_trades", "abstain"}
 # Base positions we value/scan (starters + flex feeders).
 SCAN_POSITIONS = (Position.QB, Position.RB, Position.WR, Position.TE)
 
+# A position is only a real NEED when the best body you roster there is well
+# below startable — not merely under the line. The replacement baseline is the
+# last league-wide starter, so at a deep position (QB in a 1-QB league) half the
+# league sits just under it while still starting someone perfectly fine every
+# week. Requiring a material gap stops "my QB is 15th instead of 12th" from
+# being reported the same as "my only QB is worthless".
+_NEED_RATIO = 0.6
+
 
 @dataclass
 class TradeToolContext(ToolContext):
@@ -307,13 +315,22 @@ class TradeToolContext(ToolContext):
         needs: dict[Position, dict] = {}
         for pos in SCAN_POSITIONS:
             players = [rp.player for rp in roster.players if rp.player.position == pos]
+            bar = baselines[pos]
             startable = sum(
                 1 for p in players
-                if p.platform_id in vm and vm[p.platform_id].value >= baselines[pos]
+                if p.platform_id in vm and vm[p.platform_id].value >= bar
             )
             required = req.get(pos, 0)
+            vals = sorted((vm[p.platform_id].value for p in players
+                           if p.platform_id in vm), reverse=True)
+            best = vals[0] if vals else 0.0
+            # A real need: too few bodies to fill the slots, or the best one is
+            # materially below startable. Merely sitting under the bar is "thin".
+            need = required > 0 and (len(vals) < required or best < bar * _NEED_RATIO)
+            thin = required > 0 and not need and best < bar
             needs[pos] = {"count": len(players), "startable": startable,
-                          "required": required, "surplus": startable - required}
+                          "required": required, "surplus": startable - required,
+                          "best": best, "need": need, "thin": thin}
         return needs
 
     # ---- tools ---------------------------------------------------------
@@ -347,7 +364,14 @@ class TradeToolContext(ToolContext):
             needs = self.roster_needs(r)
             parts = []
             for pos, n in needs.items():
-                flag = "SURPLUS" if n["surplus"] > 0 else ("NEED" if n["surplus"] < 0 else "ok")
+                if n["need"]:
+                    flag = "NEED"
+                elif n["thin"]:
+                    flag = "thin"
+                elif n["surplus"] > 0:
+                    flag = "SURPLUS"
+                else:
+                    flag = "ok"
                 parts.append(f"{pos.value}:{n['startable']}startable/{n['required']}req({flag})")
             lines.append(f"  Team {r.team_id}{tag} {r.owner_name}: " + " ".join(parts))
 
@@ -374,7 +398,7 @@ class TradeToolContext(ToolContext):
         my_chips = self.trade_chips(my_roster)
 
         want_positions = [Position(want)] if want else [
-            p for p, n in my_needs.items() if n["surplus"] < 0]
+            p for p, n in my_needs.items() if n["need"]]
         chip_positions: list[Position] = []
         for rp, _ in my_chips:
             if rp.player.position not in chip_positions:
@@ -407,7 +431,7 @@ class TradeToolContext(ToolContext):
                         if rp.player.position in want_positions][:3]
             # Where they are short and my depth is leverage.
             they_need = [p for p in offer_positions
-                         if their_needs.get(p, {}).get("surplus", 0) < 0]
+                         if their_needs.get(p, {}).get("need")]
             if not gettable and not they_need:
                 continue
             lines.append(f"\n  Team {r.team_id} ({r.owner_name}):")
