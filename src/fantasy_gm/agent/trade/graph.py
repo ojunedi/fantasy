@@ -17,7 +17,12 @@ from fantasy_gm.models import DecisionRecord, DecisionType
 
 
 def _prior_proposals_block(week: int, season: int) -> str:
-    """Return a prompt section listing previously proposed+reviewed trades this week."""
+    """Return a prompt section listing previously proposed+reviewed trades this week.
+
+    Lists each rejected package by its CONCRETE structure (players + counterparty)
+    so "propose something different" binds on the trade itself, not just the memo
+    wording — the model was re-skinning the same swap otherwise.
+    """
     try:
         from fantasy_gm.db.store import DB_PATH, DecisionStore
         if not DB_PATH.exists():
@@ -28,13 +33,30 @@ def _prior_proposals_block(week: int, season: int) -> str:
         ]
         if not records:
             return ""
-        lines = ["\n## Prior proposals this week — do NOT re-propose these:\n"]
+        lines = ["\n## Prior proposals this week — REJECTED, do NOT repeat:\n"]
         for r in records:
             status = r.human_response.value.upper()
-            reason = f"\n    Rejection reason: {r.override_reason}" if r.override_reason else ""
-            lines.append(f"  [{status}] {r.memo}{reason}\n")
+            reason = r.override_reason or ""
+            trades = r.recommendation.get("trades", []) if isinstance(r.recommendation, dict) else []
+            if trades:
+                for t in trades:
+                    send = ", ".join(t.get("send_names") or t.get("send_player_ids", []))
+                    recv = ", ".join(t.get("receive_names") or t.get("receive_player_ids", []))
+                    cp = t.get("counterparty_team_id", "?")
+                    lines.append(f"  [{status}] SEND {send}  ⇄  RECEIVE {recv}  (with Team {cp})")
+                    if reason:
+                        lines.append(f"      human reason: {reason}")
+            else:
+                lines.append(f"  [{status}] {r.memo}")
+                if reason:
+                    lines.append(f"      human reason: {reason}")
         lines.append(
-            "Find a DIFFERENT trade. Specifically address any rejection reasons above.\n"
+            "\nA new proposal involving the SAME counterparty AND any of the same core "
+            "players above is a REPEAT and is FORBIDDEN. Propose a STRUCTURALLY different "
+            "trade — different players and/or a different counterparty. Read the human "
+            "reasons as a PATTERN and fix the underlying flaw they point to (e.g. lopsided "
+            "value, ignored positional value), not just the wording. If no genuinely "
+            "different, acceptable trade exists, `abstain` and say exactly why.\n"
         )
         return "\n".join(lines)
     except Exception:
