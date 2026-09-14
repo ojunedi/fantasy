@@ -11,8 +11,24 @@ _DEFAULT_MODEL = "gemini-2.5-flash"
 # dies on reliable multi-tool calling, so the small/fast models are a bad fit.
 _DEFAULT_MODELS = {
     "google": _DEFAULT_MODEL,
-    "groq": "openai/gpt-oss-120b",
+    # qwen over gpt-oss-120b: gpt-oss emitted JavaScript-style // comments
+    # inside its JSON tool arguments, which the API rejects outright.
+    "groq": "qwen/qwen3.8-27b",
 }
+
+
+# Per-provider defaults for the two knobs that providers meter differently.
+# Groq's free tier enforces a separate output-tokens-per-minute cap (1,000) and
+# charges the *reserved* max_tokens against it, so a large reservation fails the
+# request outright — and only ~1 call/min fits. Gemini meters requests, not
+# output, so it can afford a bigger reservation and a faster cadence.
+_DEFAULT_MAX_TOKENS = {"google": 2048, "groq": 900}
+_DEFAULT_MAX_RPM = {"google": 4.0, "groq": 1.0}
+
+# Reasoning models bill their internal reasoning against max_tokens. On Groq's
+# 1,000 output-tokens/minute free cap that is fatal: gpt-oss-120b spent 898 of
+# 900 tokens reasoning and had none left to emit the tool call. Keep it low.
+_DEFAULT_REASONING_EFFORT = {"groq": "low"}
 
 
 def _resolve_model(provider: str) -> str:
@@ -42,7 +58,7 @@ class AgentConfig:
     # tokens-per-minute quota, so an oversized value fails the request outright
     # (Groq 413s on a 16k reservation). The agent only ever emits a tool call or
     # a short memo, so a few thousand is ample. Override: FANTASY_GM_MAX_TOKENS.
-    max_tokens: int = int(os.environ.get("FANTASY_GM_MAX_TOKENS", "2048"))
+    max_tokens: int = 0   # 0 = resolve per provider in __post_init__
     max_tool_iterations: int = 20  # safety cap on the agentic loop
     google_api_key: str = os.environ.get("GOOGLE_API_KEY", "")
     # Hard cap on LLM API calls per run (agent loop + LLM sub-agents share it),
@@ -52,7 +68,7 @@ class AgentConfig:
     # shared limiter (see `shared_rate_limiter`). Unlike `max_llm_calls` this
     # survives across runs/agents in the same process and across client
     # retries. Override with FANTASY_GM_MAX_RPM.
-    max_rpm: float = float(os.environ.get("FANTASY_GM_MAX_RPM", "4"))
+    max_rpm: float = 0.0  # 0 = resolve per provider in __post_init__
     # Attempts (not extra retries) the underlying google.genai HTTP client makes
     # per call; the library default of 6 was the 429-burst source. Retries happen
     # BELOW the rate limiter, so they are not themselves spaced: worst-case
@@ -63,10 +79,20 @@ class AgentConfig:
     # "compact" (default, one-line tool results) or "full" (untruncated outputs,
     # model reasoning, and empty-response diagnostics). Set FANTASY_GM_TRACE=full.
     trace: str = os.environ.get("FANTASY_GM_TRACE", "compact")
+    # "", "none", "low", "medium", "high" — provider-specific; "" means unset.
+    reasoning_effort: str = os.environ.get("FANTASY_GM_REASONING_EFFORT", "")
 
     def __post_init__(self) -> None:
         if not self.model:
             self.model = _resolve_model(self.provider)
+        if not self.max_tokens:
+            env = os.environ.get("FANTASY_GM_MAX_TOKENS")
+            self.max_tokens = int(env) if env else _DEFAULT_MAX_TOKENS.get(self.provider, 2048)
+        if not self.max_rpm:
+            env = os.environ.get("FANTASY_GM_MAX_RPM")
+            self.max_rpm = float(env) if env else _DEFAULT_MAX_RPM.get(self.provider, 4.0)
+        if not self.reasoning_effort:
+            self.reasoning_effort = _DEFAULT_REASONING_EFFORT.get(self.provider, "")
 
 
 _RATE_LIMITER = None
@@ -84,7 +110,7 @@ def shared_rate_limiter(max_rpm: float | None = None):
     idle, so the limiter can never release several calls back to back.
     """
     global _RATE_LIMITER, _RATE_LIMITER_RPM
-    rpm = AgentConfig.max_rpm if max_rpm is None else max_rpm
+    rpm = max_rpm or AgentConfig().max_rpm
     if _RATE_LIMITER is None or _RATE_LIMITER_RPM != rpm:
         from langchain_core.rate_limiters import InMemoryRateLimiter
         _RATE_LIMITER = InMemoryRateLimiter(

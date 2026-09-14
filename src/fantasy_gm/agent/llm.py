@@ -36,6 +36,9 @@ def build_chat_model(config: AgentConfig | None = None,
             max_tokens=max_out,
             rate_limiter=limiter,
             max_retries=cfg.max_retries,
+            # Reasoning tokens count against max_tokens, so on a tight output
+            # quota they can starve the actual tool call. See config defaults.
+            reasoning_effort=cfg.reasoning_effort or None,
         )
 
     from langchain_google_genai import ChatGoogleGenerativeAI
