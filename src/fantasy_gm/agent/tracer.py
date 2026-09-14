@@ -12,7 +12,7 @@ import re
 import time
 from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
 # ANSI colours (disabled when stdout is not a TTY)
 import sys
@@ -30,7 +30,7 @@ DIM    = lambda t: _c("2",  t)
 
 
 def _strip_think(text: str) -> str:
-    """Remove <think>…</think> blocks that qwen3 emits in thinking mode."""
+    """Remove <think>…</think> blocks some models emit in thinking mode."""
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
@@ -50,28 +50,68 @@ def _fmt_result(content: Any) -> str:
     return text[:200] + "…" if len(text) > 200 else text
 
 
-def print_message(msg: Any, terminal_tools: frozenset[str]) -> None:
-    """Print a single message event. Called for each new message in the stream."""
+def _text_of(msg: Any) -> str:
+    """AIMessage text, tolerating list-of-blocks content, with think-tags stripped."""
+    content = msg.content
+    if isinstance(content, list):
+        content = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
+    return _strip_think(content if isinstance(content, str) else "")
+
+
+def _content_str(content: Any) -> str:
+    return content if isinstance(content, str) else json.dumps(content, indent=2, ensure_ascii=False)
+
+
+def _print_block(text: str, indent: str = "      ") -> None:
+    """Print a multi-line block indented, dimmed."""
+    for line in text.splitlines() or [""]:
+        print(f"{indent}{DIM(line)}", flush=True)
+
+
+def _no_response_warning(msg: Any) -> None:
+    """The failure mode: model returned neither a tool call nor any text."""
+    meta = getattr(msg, "response_metadata", {}) or {}
+    fr = meta.get("finish_reason") or meta.get("stop_reason") or "?"
+    safety = meta.get("safety_ratings") or meta.get("prompt_feedback")
+    usage = getattr(msg, "usage_metadata", None)
+    print(f"  {YELLOW('⚠ model returned NO tool call and NO text')}", flush=True)
+    print(f"      {DIM(f'finish_reason={fr} · usage={usage}')}", flush=True)
+    if safety:
+        print(f"      {DIM(f'safety/feedback={safety}')}", flush=True)
+
+
+def print_message(msg: Any, terminal_tools: frozenset[str], full: bool = False) -> None:
+    """Print a single message event. Called for each new message in the stream.
+
+    full=True prints untruncated tool outputs, any model reasoning text, and an
+    explicit warning when the model returns nothing (no tool call, no text).
+    """
     if isinstance(msg, AIMessage):
+        text = _text_of(msg)
+        if text:  # reasoning may accompany tool calls, or be the final prose
+            print(f"  {GREY('✦')} {DIM(text if full else text[:300])}", flush=True)
         if msg.tool_calls:
             for tc in msg.tool_calls:
                 name = tc["name"]
                 args = tc.get("args", {})
-                label = BOLD(CYAN(f"→ {name}"))
-                print(f"  {label}  {DIM(_fmt_args(args))}", flush=True)
-        else:
-            # Final prose from the model (rare — usually ends via terminal tool)
-            text = _strip_think(msg.content if isinstance(msg.content, str) else "")
-            if text:
-                print(f"  {GREY('✦')} {DIM(text[:300])}", flush=True)
+                print(f"  {BOLD(CYAN(f'→ {name}'))}", flush=True)
+                if full:
+                    _print_block(_content_str(args))
+                else:
+                    print(f"      {DIM(_fmt_args(args))}", flush=True)
+        elif not text:
+            _no_response_warning(msg)
 
     elif isinstance(msg, ToolMessage):
         name = msg.name or "?"
-        result = _fmt_result(msg.content)
         is_terminal = name in terminal_tools
         icon = BOLD(GREEN("✓")) if is_terminal else GREEN("←")
         label = BOLD(name) if is_terminal else name
-        print(f"  {icon} {label}  {DIM(result)}", flush=True)
+        if full:
+            print(f"  {icon} {label}", flush=True)
+            _print_block(_content_str(msg.content))
+        else:
+            print(f"  {icon} {label}  {DIM(_fmt_result(msg.content))}", flush=True)
 
 
 def stream_verbose(
@@ -80,13 +120,15 @@ def stream_verbose(
     config: dict,
     terminal_tools: frozenset[str],
     label: str = "",
+    full: bool = False,
 ) -> dict:
     """Run the graph with stream_mode='values', printing each new message live.
 
     Returns the final accumulated state dict (same shape as app.invoke()).
     """
     if label:
-        print(f"\n{BOLD(label)}", flush=True)
+        mode = " · trace=full" if full else ""
+        print(f"\n{BOLD(label)}{DIM(mode)}", flush=True)
     print(f"  {DIM('─' * 60)}", flush=True)
 
     seen = 0
@@ -97,11 +139,14 @@ def stream_verbose(
         final_state = state
         msgs = state.get("messages", [])
         for msg in msgs[seen:]:
-            print_message(msg, terminal_tools)
+            print_message(msg, terminal_tools, full=full)
         seen = len(msgs)
 
     elapsed = time.time() - t0
-    tool_count = sum(1 for m in final_state.get("messages", []) if isinstance(m, ToolMessage))
+    msgs = final_state.get("messages", [])
+    tool_count = sum(1 for m in msgs if isinstance(m, ToolMessage))
+    reached = any(isinstance(m, ToolMessage) and m.name in terminal_tools for m in msgs)
+    status = GREEN("reached terminal tool") if reached else YELLOW("NO terminal tool — will abstain")
     print(f"  {DIM('─' * 60)}", flush=True)
-    print(f"  {DIM(f'{tool_count} tool calls · {elapsed:.0f}s')}\n", flush=True)
+    print(f"  {DIM(f'{tool_count} tool calls · {elapsed:.0f}s · ')}{status}\n", flush=True)
     return final_state

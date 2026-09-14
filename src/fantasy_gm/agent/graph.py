@@ -7,7 +7,8 @@ This module supplies only the lineup-specific parts — the system prompt, tool
 set, thread id, and the DecisionRecord builder.
 
 Design notes:
-  - Claude stays the model via `langchain-anthropic` ChatAnthropic (see base).
+  - The model is Gemini (`gemini-2.5-flash`) via `langchain-google-genai`
+    ChatGoogleGenerativeAI; the build lives in `base.GraphAgent._build_llm`.
   - Nothing here executes an irreversible action; terminal tools are propose-only.
 """
 from __future__ import annotations

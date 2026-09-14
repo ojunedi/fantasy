@@ -10,7 +10,7 @@ can slot multiple specialists onto the same machinery:
     it and declares its own `terminal_tools`.
 
   - `GraphAgent`: the LangGraph StateGraph loop (agent ⇄ tools), terminal-tool
-    routing, lazy `ChatAnthropic` build, a `SqliteSaver` checkpointer, and the
+    routing, lazy `ChatGoogleGenerativeAI` build, a `SqliteSaver` checkpointer, and the
     run driver. Subclasses supply the system prompt, tool set, a thread id, and
     the DecisionRecord builder.
 
@@ -156,6 +156,12 @@ class GraphAgent(ABC):
             max_output_tokens=self.config.max_tokens,
         )
 
+    @staticmethod
+    def _llm_description(llm: Any) -> str:
+        """`ClassName(model)` — makes each run self-document its live backend."""
+        model = getattr(llm, "model", None) or getattr(llm, "model_name", None) or "?"
+        return f"{type(llm).__name__}({model})"
+
     def _route_after_agent(self, state: AgentState) -> str:
         last = state["messages"][-1]
         if getattr(last, "tool_calls", None):
@@ -171,13 +177,13 @@ class GraphAgent(ABC):
                 break
         return "agent"
 
-    def _compile(self, ctx: ToolContext, checkpointer):
+    def _compile(self, ctx: ToolContext, checkpointer, llm):
         tools = self.build_tools(ctx)
-        llm = self._build_llm().bind_tools(tools)
+        bound = llm.bind_tools(tools)
         system_prompt = self.system_prompt
 
         def agent_node(state: AgentState) -> dict:
-            response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
+            response = bound.invoke([SystemMessage(content=system_prompt)] + state["messages"])
             return {"messages": [response]}
 
         graph = StateGraph(AgentState)
@@ -195,7 +201,8 @@ class GraphAgent(ABC):
         conn = sqlite3.connect(str(self._checkpoint_path), check_same_thread=False)
         try:
             checkpointer = SqliteSaver(conn)
-            app = self._compile(ctx, checkpointer)
+            llm = self._build_llm()
+            app = self._compile(ctx, checkpointer, llm)
             max_iter = getattr(self, "max_tool_iterations", self.config.max_tool_iterations)
             config = {
                 "recursion_limit": max_iter * 2,
@@ -204,11 +211,12 @@ class GraphAgent(ABC):
             input_msg = {"messages": [HumanMessage(content=self.user_prompt(ctx))]}
             if verbose:
                 from fantasy_gm.agent.tracer import stream_verbose
-                label = (f"{self.config.model} · "
+                label = (f"{self._llm_description(llm)} · "
                          f"{type(self).__name__} · "
                          f"week {ctx.week} / {ctx.season}")
                 final_state = stream_verbose(
-                    app, input_msg, config, self.terminal_tools, label=label)
+                    app, input_msg, config, self.terminal_tools, label=label,
+                    full=(self.config.trace == "full"))
             else:
                 final_state = app.invoke(input_msg, config=config)
         finally:

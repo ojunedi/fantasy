@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -141,6 +140,8 @@ def cmd_backtest(args: argparse.Namespace) -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    # Quiet per-request HTTP spam so the agent trace stays readable.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     parser = argparse.ArgumentParser(prog="fantasy-gm")
     sub = parser.add_subparsers(dest="command", required=True)
 
