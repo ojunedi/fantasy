@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from fantasy_gm.agent.tools_ext.opponent_injuries import tool_get_opponent_injuries
 from fantasy_gm.models import (
     Player,

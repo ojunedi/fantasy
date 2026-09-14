@@ -22,7 +22,6 @@ from fantasy_gm.adapters.espn import ESPNAdapter
 from fantasy_gm.models import (
     InjuryReport,
     PlayerProjection,
-    Position,
     UsageTrend,
     VegasLine,
 )

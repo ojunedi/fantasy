@@ -62,10 +62,6 @@ class SignalBundle:
             if a.age_seconds is not None
         }
 
-    def unavailable_signals(self) -> list[str]:
-        return [a.name for a in self.availability if not a.available]
-
-
 class SignalProvider(Protocol):
     """Interface every signal source implements."""
 

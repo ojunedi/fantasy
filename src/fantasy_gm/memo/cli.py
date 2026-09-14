@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from fantasy_gm.db.store import DecisionStore
 from fantasy_gm.execute.base import Executor
-from fantasy_gm.execute.lineup_plan import slot_name
 from fantasy_gm.execute.trade_plan import TradeProposalExecutor
 from fantasy_gm.models import DecisionRecord, DecisionType, HumanResponse
 

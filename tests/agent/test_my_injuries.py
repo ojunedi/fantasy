@@ -6,8 +6,6 @@ directly — no live adapter or network calls.
 """
 from __future__ import annotations
 
-import pytest
-
 from fantasy_gm.agent.tools_ext.my_injuries import tool_get_my_injury_summary
 from fantasy_gm.models import (
     InjuryReport,

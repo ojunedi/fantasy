@@ -44,10 +44,6 @@ class DiskCache:
         data_path.write_text(json.dumps(data))
         meta_path.write_text(json.dumps({"cached_at": time.time(), "key": key}))
 
-    def invalidate(self, key: str) -> None:
-        for path in self._paths(key):
-            path.unlink(missing_ok=True)
-
     def get_cached_at(self, key: str) -> float | None:
         """Return epoch timestamp when key was cached, or None."""
         _, meta_path = self._paths(key)

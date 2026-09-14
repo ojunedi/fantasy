@@ -183,11 +183,6 @@ class TeamStanding(BaseModel):
     def games_played(self) -> int:
         return self.wins + self.losses + self.ties
 
-    @property
-    def win_pct(self) -> float:
-        gp = self.games_played
-        return (self.wins + 0.5 * self.ties) / gp if gp else 0.0
-
 
 class Transaction(BaseModel):
     transaction_id: str
@@ -212,14 +207,6 @@ class Signal(BaseModel, Generic[T]):
     source: str
     as_of: datetime
     value: T
-
-    @property
-    def age_seconds(self) -> float:
-        return (datetime.utcnow() - self.as_of).total_seconds()
-
-    @property
-    def is_stale(self) -> bool:
-        return self.age_seconds > 3600  # configurable threshold
 
 
 class PlayerProjection(BaseModel):

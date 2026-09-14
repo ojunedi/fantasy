@@ -166,9 +166,6 @@ class ESPNAdapter(FantasyPlatform):
                     is_starter=is_starter,
                 ))
 
-        playoff_week = schedule_settings.get("playoffMatchupPeriodLength", 2)
-        matchup_periods = schedule_settings.get("matchupPeriods", {})
-        all_weeks = list(range(1, max((int(k) for k in matchup_periods), default=17) + 1))
         # ESPN: playoffs typically start week 15 for 14-week regular season
         reg_season_length = schedule_settings.get("matchupPeriodCount", 14)
         playoff_start = reg_season_length + 1

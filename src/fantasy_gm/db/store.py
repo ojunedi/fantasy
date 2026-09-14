@@ -53,8 +53,6 @@ CREATE TABLE IF NOT EXISTS scorecards (
 );
 """
 
-MIGRATION_V1 = "-- v1: initial schema"
-
 
 def _connect(path: Path = DB_PATH) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)

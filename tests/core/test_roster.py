@@ -1,5 +1,4 @@
 """Tests for roster legality checker."""
-import pytest
 from fantasy_gm.core.roster import check_lineup_legality, slot_accepts
 from fantasy_gm.models import (
     LeagueSettings,

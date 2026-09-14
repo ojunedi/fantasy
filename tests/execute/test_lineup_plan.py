@@ -1,6 +1,4 @@
 """Tests for the deterministic lineup-move planner (the write path's core)."""
-import pytest
-
 from fantasy_gm.execute.base import LineupMove
 from fantasy_gm.execute.lineup_plan import (
     BENCH_SLOT,
@@ -14,7 +12,6 @@ from fantasy_gm.models import (
     Player,
     PlayerStatus,
     Position,
-    Roster,
     RosterPlayer,
     RosterSlot,
     ScoringRules,

@@ -14,9 +14,7 @@ from fantasy_gm.core.optimizer import optimize_lineup
 from fantasy_gm.models import (
     BaselineType,
     LeagueSettings,
-    Player,
     PlayerProjection,
-    Position,
     Roster,
     RosterPlayer,
 )

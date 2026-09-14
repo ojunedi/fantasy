@@ -10,9 +10,7 @@ No LLM. No randomness. Given the same inputs, always returns the same lineup.
 """
 from __future__ import annotations
 
-from itertools import permutations
-
-from fantasy_gm.core.roster import FLEX_ELIGIBLE, SUPER_FLEX_ELIGIBLE, slot_accepts
+from fantasy_gm.core.roster import slot_accepts
 from fantasy_gm.models import LeagueSettings, Player, Position, RosterPlayer, RosterSlot
 
 

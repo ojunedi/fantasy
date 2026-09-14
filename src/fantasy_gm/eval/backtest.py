@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Callable
 
 from fantasy_gm.adapters.base import FantasyPlatform
@@ -92,7 +91,6 @@ class Backtester:
         # Decision-time data (as-of: before week's games)
         roster: Roster = self.platform.get_roster(self.team_id, week, season)
         projections: list[PlayerProjection] = self._fetch_projections(week, season)
-        proj_map = {p.player_id: p.projected_points for p in projections}
 
         # Outcome data (as-of: after week completed — only for measurement)
         actual_scores: dict[str, float] = self._fetch_actual_scores(week, season)
