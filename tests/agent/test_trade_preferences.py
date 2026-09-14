@@ -72,6 +72,80 @@ def test_describe_renders_every_directive():
     assert "no rentals" in text
 
 
+@pytest.mark.parametrize("answer,expected", [
+    ("1,3,5", [0, 2, 4]),
+    ("1-4", [0, 1, 2, 3]),
+    ("2 4", [1, 3]),
+    ("3,1", [2, 0]),        # order preserved as typed
+    ("1,1,2", [0, 1]),      # de-duplicated
+])
+def test_parse_selection_accepts_numbers_and_ranges(answer, expected):
+    from fantasy_gm.memo.interview import _parse_selection
+    indices, problems = _parse_selection(answer, 6)
+    assert indices == expected
+    assert problems == []
+
+
+@pytest.mark.parametrize("answer,marker", [
+    ("99", "out of range"),
+    ("abc", "not a number"),
+    ("4-2", "not a valid range"),
+])
+def test_parse_selection_reports_bad_input(answer, marker):
+    from fantasy_gm.memo.interview import _parse_selection
+    indices, problems = _parse_selection(answer, 6)
+    assert indices == []
+    assert any(marker in p for p in problems)
+
+
+def _roster_ctx():
+    from fantasy_gm.models import Player, PlayerStatus, Roster, RosterPlayer
+
+    def rp(pid, name, pos, starter):
+        p = Player(platform_id=pid, name=name, position=pos,
+                   eligible_positions=[pos], status=PlayerStatus.ACTIVE)
+        return RosterPlayer(player=p, slot=pos, is_starter=starter)
+
+    players = [rp("1", "Bijan Robinson", Position.RB, True),
+               rp("2", "Baker Mayfield", Position.QB, False),
+               rp("3", "Michael Wilson", Position.WR, False)]
+
+    class _Ctx:
+        team_id = "8"
+
+        def roster(self):
+            return Roster(team_id="8", team_name="T", owner_name="Me",
+                          players=players, week=1, season=2026)
+
+        def value_map(self):
+            raise RuntimeError("offline")   # exercise the degraded path
+
+        def trade_chips(self, roster):
+            raise RuntimeError("offline")
+
+        def player_index(self):
+            raise RuntimeError("offline")
+
+    return _Ctx()
+
+
+def test_picker_selects_players_by_number(monkeypatch, capsys):
+    replies = iter(["", "1,3", "", ""])
+    monkeypatch.setattr("builtins.input", lambda *_: next(replies))
+    prefs = interview_trade_preferences(_roster_ctx(), interactive=True)
+    assert prefs.offerable_ids == ["1", "3"]
+    out = capsys.readouterr().out
+    assert "Bijan Robinson" in out and "Michael Wilson" in out
+
+
+def test_picker_skips_on_blank(monkeypatch):
+    replies = iter(["", "", "", ""])
+    monkeypatch.setattr("builtins.input", lambda *_: next(replies))
+    prefs = interview_trade_preferences(_roster_ctx(), interactive=True)
+    assert prefs.offerable_ids == []
+    assert prefs.is_empty()
+
+
 def test_interview_is_skipped_without_a_tty():
     """A piped/CI run must not block on input."""
     prefs = interview_trade_preferences(ctx=None, interactive=False)
