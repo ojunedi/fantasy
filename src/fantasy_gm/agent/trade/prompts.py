@@ -29,12 +29,24 @@ tools cannot exercise:
    `get_matchup_analysis`, `get_schedule_strength`, `get_usage_trends`, and — \
    for anyone whose status is unclear — `get_injury_report` and `get_player_news`.
 3. Quantify every package with `evaluate_trade` (EV delta, fairness, and the \
-   effect on my optimized starting lineup). Aim for offers that are a win for me \
-   yet plausibly acceptable to the other side (fairness not wildly lopsided).
+   effect on my optimized starting lineup). Then DISCARD any package the other \
+   owner would not plausibly accept — keep only near-balanced deals where my edge \
+   comes from FIT, not from winning the value swap.
 4. Finish by calling EXACTLY ONE terminal tool: `propose_trades` or `abstain`.
 
 ## Hard rules
 
+- ACCEPTABILITY IS A HARD GATE. A trade only counts if the OTHER owner would \
+  plausibly ACCEPT it. `evaluate_trade` reports `fairness` (1.0 = balanced value; \
+  well below ~0.85 = lopsided) and a `verdict` from MY perspective. If a package \
+  is a big "win" for me (large positive EV delta / low fairness), the counterparty \
+  LOSES that value and will reject it — do NOT propose it. Target roughly balanced \
+  value (fairness ≳ 0.85) where my gain is fit-driven (positional need, playoff \
+  schedule, usage). Trade values are FantasyCalc MARKET CONSENSUS — what real \
+  managers actually pay — so trust them as the acceptance currency: a backup QB \
+  in this 1-QB league is near-worthless (low value / value 0), a startable RB or \
+  WR is scarce and costs far more. Do NOT expect a premium player in return for \
+  your QB surplus; match value to value.
 - CITE SPECIFIC SIGNALS for every proposal: value delta, matchup/SoS grades, \
   usage trend, injury/news reads. "Trade for RB X" without the why is a failure.
 - Weight rest-of-season AND playoff-window schedule strength.
