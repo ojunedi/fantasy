@@ -67,6 +67,15 @@ class NewsArgs(BaseModel):
     limit: int = Field(default=10, description="Number of headlines to return.")
 
 
+class OpponentDefenseArgs(BaseModel):
+    detail: bool = Field(
+        default=False,
+        description="False (default) gives one line per player with the points-allowed "
+                    "rate and rank. True adds the full per-stat breakdown and team-offense "
+                    "context — far longer, so only for a genuinely close call.",
+    )
+
+
 # ---- Tool factory ---------------------------------------------------------
 
 def build_lineup_tools(ctx: LineupToolContext, include_prefetch_tools: bool = True) -> list[StructuredTool]:
@@ -105,8 +114,8 @@ def build_lineup_tools(ctx: LineupToolContext, include_prefetch_tools: bool = Tr
         return _dispatch("check_lineup_legality", {"starter_player_ids": starter_player_ids})
 
     # Matchup / injury context tools (no-arg reads — called on demand, not pre-fetched)
-    def get_opponent_defense() -> str:
-        return _dispatch("get_opponent_defense", {})
+    def get_opponent_defense(detail: bool = False) -> str:
+        return _dispatch("get_opponent_defense", {"detail": detail})
 
     def get_opponent_injuries() -> str:
         return _dispatch("get_opponent_injuries", {})
@@ -186,9 +195,12 @@ def build_lineup_tools(ctx: LineupToolContext, include_prefetch_tools: bool = Tr
         ),
         StructuredTool.from_function(
             get_opponent_defense, name="get_opponent_defense",
-            description="For each rostered player: what NFL team they play for, who that team "
-                        "faces this week, and whether the game is home or away. Use this to "
-                        "identify favorable/tough matchups before adjusting projections.",
+            args_schema=OpponentDefenseArgs,
+            description="For each rostered player: who their NFL team faces this week and how "
+                        "generous that defense is to their position (fantasy points allowed per "
+                        "game plus a 1-32 rank). Use it to spot favorable/tough matchups before "
+                        "adjusting projections. Pass detail=true only if you need the full "
+                        "per-stat breakdown for a close call — it is much longer.",
         ),
         StructuredTool.from_function(
             get_opponent_injuries, name="get_opponent_injuries",

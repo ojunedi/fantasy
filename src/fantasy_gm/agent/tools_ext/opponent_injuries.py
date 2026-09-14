@@ -128,61 +128,66 @@ def tool_get_opponent_injuries(ctx: Any) -> str:
     except Exception as exc:
         return f"Error fetching NFL scoreboard: {exc}"
 
-    # 3. Iterate players, fetch opponent injuries (cache by opponent abbr)
-    injury_cache: dict[str, list[dict[str, str]] | None] = {}
-    lines: list[str] = [f"Opponent injuries — Week {week}, {season} season:\n"]
+    # 3. Group my players by the opponent they face. The data is per opposing
+    #    team, so reporting it per player repeats whole blocks (and "no
+    #    injuries" a dozen times) for no extra information.
+    by_opponent: dict[str, list[str]] = {}
+    no_game: list[str] = []
+    unknown_team: list[str] = []
 
     for rp in players:
         player = rp.player
-        starter_tag = "STARTER" if rp.is_starter else "bench"
-        pos = player.position.value
-        name = player.name
+        who = f"{player.name} ({player.position.value}{'' if rp.is_starter else ', bench'})"
 
-        # nfl_team is the proTeamId as a string (e.g. "12" for KC)
-        nfl_team_id = player.nfl_team
+        nfl_team_id = player.nfl_team  # proTeamId as a string, e.g. "12" for KC
         if not nfl_team_id:
-            lines.append(
-                f"=== {name} ({pos}) [{starter_tag}] — NFL team unknown ==="
-            )
-            lines.append("")
+            unknown_team.append(who)
             continue
 
         matchup = matchup_map.get(nfl_team_id)
         if not matchup:
-            lines.append(
-                f"=== {name} ({pos}) [{starter_tag}] plays for team {nfl_team_id}"
-                f" — on BYE or not scheduled this week ==="
-            )
-            lines.append("")
+            no_game.append(who)
             continue
 
-        team_abbr = matchup["abbr"]
-        opponent_abbr = matchup["opponent_abbr"]
+        # Name the player's own team too, so this tool stands alone.
+        who = who.replace("(", f"({matchup['abbr']}, ", 1)
+        by_opponent.setdefault(matchup["opponent_abbr"], []).append(who)
 
-        lines.append(
-            f"=== Your player: {name} ({pos}) [{starter_tag}]"
-            f" plays for {team_abbr} — {team_abbr} faces {opponent_abbr} ==="
-        )
+    # 4. Fetch each opposing team's injuries once.
+    lines: list[str] = [
+        f"Opponent injuries — Week {week}, {season} season "
+        f"(Out / Doubtful / Questionable on the defenses my players face):"
+    ]
+    clean: list[str] = []
+    errored: list[str] = []
 
-        # Fetch injuries for the opponent (de-duplicate calls)
-        if opponent_abbr not in injury_cache:
-            injury_cache[opponent_abbr] = _fetch_team_injuries(opponent_abbr)
-
-        injuries = injury_cache[opponent_abbr]
-
+    for opponent_abbr in sorted(by_opponent):
+        injuries = _fetch_team_injuries(opponent_abbr)
+        facing = ", ".join(by_opponent[opponent_abbr])
         if injuries is None:
-            lines.append(
-                f"  [Could not retrieve injury data for {opponent_abbr} — API error]"
-            )
+            errored.append(opponent_abbr)
         elif not injuries:
-            lines.append(f"  No significant injuries reported for {opponent_abbr}.")
+            clean.append(opponent_abbr)
         else:
-            lines.append(f"  Key {opponent_abbr} injuries:")
+            lines.append(f"  {opponent_abbr} (faced by {facing}):")
             for inj in injuries:
                 lines.append(
                     f"    • {inj['name']} ({inj['position']})"
                     f" — {inj['status']} ({inj['injury']})"
                 )
-        lines.append("")
 
-    return "\n".join(lines).rstrip()
+    def _with_facing(abbrs: list[str]) -> str:
+        return "; ".join(f"{a} (faced by {', '.join(by_opponent[a])})" for a in abbrs)
+
+    if clean:
+        lines.append(f"  No significant injuries: {_with_facing(clean)}")
+    if errored:
+        lines.append(f"  Injury data unavailable (API error): {_with_facing(errored)}")
+    if no_game:
+        lines.append(f"  No game this week (BYE or not scheduled): {', '.join(no_game)}")
+    if unknown_team:
+        lines.append(f"  NFL team unknown: {', '.join(unknown_team)}")
+    if len(lines) == 1:
+        lines.append("  (no players on roster)")
+
+    return "\n".join(lines)

@@ -320,9 +320,9 @@ class LineupToolContext(ToolContext):
         return ("Illegal: these players cannot all fit starter slots simultaneously "
                 "(position constraints).")
 
-    def _tool_get_opponent_defense(self, _: dict) -> str:
+    def _tool_get_opponent_defense(self, tool_input: dict) -> str:
         from fantasy_gm.agent.tools_ext.opponent_defense import tool_get_opponent_defense
-        return tool_get_opponent_defense(self)
+        return tool_get_opponent_defense(self, detail=bool(tool_input.get("detail", False)))
 
     def _tool_get_opponent_injuries(self, _: dict) -> str:
         from fantasy_gm.agent.tools_ext.opponent_injuries import tool_get_opponent_injuries

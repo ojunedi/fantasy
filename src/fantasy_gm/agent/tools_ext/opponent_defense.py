@@ -422,11 +422,15 @@ def _build_opponent_map(games: list[dict]) -> dict[str, dict[str, str]]:
 # Main tool function
 # ---------------------------------------------------------------------------
 
-def tool_get_opponent_defense(ctx: Any) -> str:
+def tool_get_opponent_defense(ctx: Any, detail: bool = False) -> str:
     """
-    For each player on my roster, shows:
-    - Opponent defense (DvP) — position-specific per-game stats with rank
-    - Player's own team offense — passing or rushing context by position
+    For each player on my roster, shows the opponent defense-vs-position matchup.
+
+    Compact by default — one line per player with the fantasy-points-allowed rate
+    and rank, which is the part decisions actually turn on. The full per-stat
+    breakdown plus the player's own team-offense context runs ~11 lines per
+    player, which is a large, permanent cost in the agent's message history, so
+    it is opt-in via detail=True.
 
     Uses ESPN public APIs (no auth) and nflreadpy for historical player stats.
     """
@@ -478,7 +482,12 @@ def tool_get_opponent_defense(ctx: Any) -> str:
         return dvp_by_pos[pos]
 
     # ---- Build output ----
-    lines: list[str] = [f"Opponent defense matchup — Week {week}, {season} season:"]
+    header = f"Opponent defense matchup — Week {week}, {season} season:"
+    if not detail:
+        header += ("\n  (fantasy points allowed per game to the position; "
+                   "rank 1 = most generous. Call with detail=true for per-stat "
+                   "breakdowns and team-offense context.)")
+    lines: list[str] = [header]
     if teams_error:
         lines.append(f"  WARNING: {teams_error}")
     if scoreboard_error:
@@ -518,18 +527,32 @@ def tool_get_opponent_defense(ctx: Any) -> str:
         home_away = opp_info["home_away"]
         vs_str = f"vs {opp_abbr}" if home_away == "home" else f"@ {opp_abbr}"
 
-        # ---- Player block header ----
-        lines.append(f"\n=== {player.name} ({pos}) [{tag}] | {team_abbr} {vs_str} ===")
+        # ---- Resolve DvP once; both layouts need it ----
+        dvp = None
+        if pos not in ("K", "DST"):
+            nfl_opp_abbr = ESPN_TO_NFLVERSE.get(opp_abbr, opp_abbr)
+            dvp = _get_dvp(pos).get(nfl_opp_abbr)
 
-        # ---- K / DST: skip DvP and team offense ----
+        # ---- Compact layout: one line per player ----
+        if not detail:
+            stem = f"  {player.name} ({pos}) [{tag}] {team_abbr} {vs_str}"
+            if pos in ("K", "DST"):
+                lines.append(stem)
+            elif dvp:
+                rank = int(dvp.get("rank", 0))
+                total = int(dvp.get("total", 32))
+                label = _rank_label(rank) if rank > 0 else "?"
+                lines.append(f"{stem} — {opp_abbr} allows {float(dvp.get('fp_pg', 0.0)):.1f} "
+                             f"fp/g to {pos} [{rank}/{total} {label}]")
+            else:
+                lines.append(f"{stem} — no DvP data for {opp_abbr} vs {pos}")
+            continue
+
+        # ---- Detailed layout ----
+        lines.append(f"\n=== {player.name} ({pos}) [{tag}] | {team_abbr} {vs_str} ===")
         if pos in ("K", "DST"):
             lines.append(f"  (DvP not shown for {pos})")
             continue
-
-        # ---- DvP section ----
-        nfl_opp_abbr = ESPN_TO_NFLVERSE.get(opp_abbr, opp_abbr)
-        dvp_all = _get_dvp(pos)
-        dvp = dvp_all.get(nfl_opp_abbr)
 
         if dvp:
             lines.append("")
@@ -537,7 +560,6 @@ def tool_get_opponent_defense(ctx: Any) -> str:
         else:
             lines.append(f"  (DvP data unavailable for {opp_abbr} vs {pos})")
 
-        # ---- Team offense section ----
         try:
             team_stats = _fetch_team_offense(pro_team_id)
         except Exception:

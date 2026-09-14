@@ -458,7 +458,7 @@ def test_dvp_stats_appear_for_wr(mock_nfl, mock_get):
     roster = _make_roster(players, season=2026)
     ctx = FakeCtx(roster, season=2026)
 
-    result = tool_get_opponent_defense(ctx)
+    result = tool_get_opponent_defense(ctx, detail=True)
 
     # Player and team should appear
     assert "Rashee Rice" in result
@@ -499,7 +499,7 @@ def test_team_offense_stats_appear_for_passing_position(mock_nfl, mock_get):
     roster = _make_roster(players, season=2026)
     ctx = FakeCtx(roster, season=2026)
 
-    result = tool_get_opponent_defense(ctx)
+    result = tool_get_opponent_defense(ctx, detail=True)
 
     assert "Patrick Mahomes" in result
     assert "KC" in result
