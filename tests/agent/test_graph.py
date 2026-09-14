@@ -175,3 +175,27 @@ def test_optimize_lineup_tool_uses_adjusted_projections(ctx):
     assert "Player wr2" in out_raw
     out_adj, _ = ctx.dispatch("optimize_lineup", {"projections": {"wr1": 25.0}})
     assert "Player wr1" in out_adj
+
+
+def test_llm_call_budget_caps_the_loop(ctx):
+    """A model that never terminates is stopped after max_llm_calls LLM calls."""
+    class LoopingModel:
+        def __init__(self):
+            self.calls = 0
+
+        def bind_tools(self, tools):
+            return self
+
+        def invoke(self, messages):
+            self.calls += 1
+            return AIMessage(content="", tool_calls=[
+                {"name": "get_my_injury_summary", "args": {}, "id": f"t{self.calls}"}])
+
+    model = LoopingModel()
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    agent = LineupGraphAgent(AgentConfig(max_llm_calls=3), llm=model, checkpoint_path=tmp)
+    record = agent.decide(ctx, verbose=False)
+
+    assert model.calls == 3            # capped — did not loop until recursion limit
+    assert ctx.llm_calls == 3
+    assert record.recommendation.get("abstained")  # no terminal tool → abstain fallback

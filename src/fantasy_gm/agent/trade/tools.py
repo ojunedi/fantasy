@@ -452,6 +452,9 @@ class TradeToolContext(ToolContext):
         from fantasy_gm.models import PlayerStatus
         if player.status == PlayerStatus.ACTIVE:
             return f"{player.name}: ACTIVE — no injury concern, LLM interpretation skipped."
+        if not self.llm_call_allowed():
+            return (f"{player.name}: {player.status.value} — injury interpretation skipped "
+                    f"(LLM call budget reached this run).")
         fn = self.injury_fn or _default_injury_fn
         result = fn(
             player_name=player.name,
@@ -460,6 +463,7 @@ class TradeToolContext(ToolContext):
             injury_description=None,
             snap_share_last3=None,
         )
+        self.record_llm_call()
         return (f"Injury read for {player.name}: availability_pct="
                 f"{result.get('availability_pct')}, role_change={result.get('role_change_flag')}. "
                 f"{result.get('note', '')}")
@@ -469,8 +473,11 @@ class TradeToolContext(ToolContext):
         info = self.player_index().get(pid)
         if not info:
             return f"Player {pid} not found."
+        if not self.llm_call_allowed():
+            return f"News for {info['name']}: skipped (LLM call budget reached this run)."
         fn = self.news_fn or _default_news_fn
         result = fn(player_name=info["name"])
+        self.record_llm_call()
         events = result.get("events", [])
         head = (f"News read for {info['name']}: net outlook "
                 f"{result.get('net_outlook', 'neutral')}. {result.get('note', '')}")

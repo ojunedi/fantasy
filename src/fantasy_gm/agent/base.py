@@ -66,6 +66,17 @@ class ToolContext:
     # surfaced to the agent as an input to weight floor vs. ceiling / urgency.
     posture: str | None = None
 
+    # Shared per-run LLM-call budget (rate-limit guard). Set by GraphAgent.decide;
+    # both the agent loop and the LLM sub-agents draw from the same counter.
+    llm_budget: int = 999
+    llm_calls: int = 0
+
+    def llm_call_allowed(self) -> bool:
+        return self.llm_calls < self.llm_budget
+
+    def record_llm_call(self) -> None:
+        self.llm_calls += 1
+
     # ---- lazy loaders --------------------------------------------------
 
     def roster(self) -> Roster:
@@ -168,23 +179,36 @@ class GraphAgent(ABC):
             return "tools"
         return END
 
-    def _route_after_tools(self, state: AgentState) -> str:
-        for msg in reversed(state["messages"]):
-            if isinstance(msg, ToolMessage):
-                if msg.name in self.terminal_tools:
-                    return END
-            else:
-                break
-        return "agent"
-
     def _compile(self, ctx: ToolContext, checkpointer, llm):
         tools = self.build_tools(ctx)
         bound = llm.bind_tools(tools)
         system_prompt = self.system_prompt
+        terminal = ", ".join(sorted(self.terminal_tools))
 
         def agent_node(state: AgentState) -> dict:
-            response = bound.invoke([SystemMessage(content=system_prompt)] + state["messages"])
+            prompt = [SystemMessage(content=system_prompt)] + state["messages"]
+            # On the last call in the budget, force a terminal decision.
+            if ctx.llm_calls >= ctx.llm_budget - 1:
+                prompt.append(SystemMessage(content=(
+                    "LLM CALL BUDGET REACHED — this is your FINAL turn. Do NOT request "
+                    "any more read/compute tools. Using only what you have already "
+                    f"gathered, call exactly one terminal tool now ({terminal}); if the "
+                    "data is insufficient, call abstain.")))
+            response = bound.invoke(prompt)
+            ctx.record_llm_call()
             return {"messages": [response]}
+
+        def route_after_tools(state: AgentState) -> str:
+            for msg in reversed(state["messages"]):
+                if isinstance(msg, ToolMessage):
+                    if msg.name in self.terminal_tools:
+                        return END
+                else:
+                    break
+            # Stop looping once the shared LLM budget is spent.
+            if ctx.llm_calls >= ctx.llm_budget:
+                return END
+            return "agent"
 
         graph = StateGraph(AgentState)
         graph.add_node("agent", agent_node)
@@ -192,11 +216,12 @@ class GraphAgent(ABC):
         graph.add_edge(START, "agent")
         graph.add_conditional_edges("agent", self._route_after_agent,
                                     {"tools": "tools", END: END})
-        graph.add_conditional_edges("tools", self._route_after_tools,
+        graph.add_conditional_edges("tools", route_after_tools,
                                     {"agent": "agent", END: END})
         return graph.compile(checkpointer=checkpointer)
 
     def decide(self, ctx: ToolContext, verbose: bool = True) -> DecisionRecord:
+        ctx.llm_budget = self.config.max_llm_calls
         self._checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(self._checkpoint_path), check_same_thread=False)
         try:

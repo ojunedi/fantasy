@@ -13,6 +13,9 @@ class AgentConfig:
     max_tokens: int = 16000
     max_tool_iterations: int = 20  # safety cap on the agentic loop
     google_api_key: str = os.environ.get("GOOGLE_API_KEY", "")
+    # Hard cap on LLM API calls per run (agent loop + LLM sub-agents share it),
+    # to stay under provider rate limits. Override with FANTASY_GM_MAX_LLM_CALLS.
+    max_llm_calls: int = int(os.environ.get("FANTASY_GM_MAX_LLM_CALLS", "4"))
     # "compact" (default, one-line tool results) or "full" (untruncated outputs,
     # model reasoning, and empty-response diagnostics). Set FANTASY_GM_TRACE=full.
     trace: str = os.environ.get("FANTASY_GM_TRACE", "compact")
