@@ -196,15 +196,35 @@ class TradeToolContext(ToolContext):
             req[s.position] = req.get(s.position, 0) + 1
         return req
 
+    def _flex_slots(self) -> int:
+        return sum(1 for s in self.settings.roster_slots
+                   if s.is_starter and s.position in (Position.FLEX, Position.SUPER_FLEX))
+
+    def _flex_eligible(self) -> set[Position]:
+        """Positions that can fill this league's flex slots."""
+        from fantasy_gm.core.roster import FLEX_ELIGIBLE, SUPER_FLEX_ELIGIBLE
+        elig: set[Position] = set()
+        for s in self.settings.roster_slots:
+            if not s.is_starter:
+                continue
+            if s.position == Position.FLEX:
+                elig |= FLEX_ELIGIBLE
+            elif s.position == Position.SUPER_FLEX:
+                elig |= SUPER_FLEX_ELIGIBLE
+        return {p for p in elig if p in SCAN_POSITIONS}
+
     def _replacement_baselines(self) -> dict[Position, float]:
         """League 'startable' value floor per position.
 
         Ranks every player's asset value at a position across the league and
-        takes the value at the last league-wide starter slot (team_count ×
-        required) as replacement level. Players above it count as startable
-        depth, so surplus/need reflects quality, not just raw roster counts.
+        takes the value at the last league-wide starter slot as replacement
+        level. Flex slots count too — ignoring them sets the RB/WR/TE bar far
+        too high. They are split evenly across the flex-eligible positions,
+        which is an approximation but much closer than dropping them.
         """
         req = self._team_starter_requirements()
+        elig = self._flex_eligible()
+        flex_share = (self._flex_slots() / len(elig)) if elig else 0.0
         vm = self.value_map()
         idx = self.player_index()
         baselines: dict[Position, float] = {}
@@ -214,7 +234,8 @@ class TradeToolContext(ToolContext):
                  if info["position"] == pos and pid in vm),
                 reverse=True,
             )
-            n_starters = self.settings.team_count * max(1, req.get(pos, 0))
+            per_team = req.get(pos, 0) + (flex_share if pos in elig else 0.0)
+            n_starters = max(1, round(self.settings.team_count * per_team))
             if not vals:
                 baselines[pos] = 0.0
             elif n_starters - 1 < len(vals):
@@ -222,6 +243,56 @@ class TradeToolContext(ToolContext):
             else:
                 baselines[pos] = vals[-1]
         return baselines
+
+    def trade_chips(self, roster: Roster) -> list[tuple]:
+        """Players beyond a team's actual starting allocation that still carry
+        market value — what that team can realistically trade away.
+
+        Distinct from `roster_needs`: a chip does NOT have to clear the league
+        replacement baseline. A backup QB or a WR4 is a real asset even though
+        he is not a startable-quality piece, and the surplus math hides him.
+
+        Returns [(RosterPlayer, AssetValue)] sorted by value, most valuable first.
+        """
+        req = self._team_starter_requirements()
+        elig = self._flex_eligible()
+        vm = self.value_map()
+
+        def val(rp) -> float:
+            av = vm.get(rp.player.platform_id)
+            return av.value if av else 0.0
+
+        by_pos: dict[Position, list] = {}
+        for rp in roster.players:
+            if rp.player.position in SCAN_POSITIONS:
+                by_pos.setdefault(rp.player.position, []).append(rp)
+        for players in by_pos.values():
+            players.sort(key=lambda rp: -val(rp))
+
+        locked: set[str] = set()
+        flex_pool: list = []
+        for pos, players in by_pos.items():
+            n = req.get(pos, 0)
+            for i, rp in enumerate(players):
+                if i < n:
+                    locked.add(rp.player.platform_id)
+                elif pos in elig:
+                    flex_pool.append(rp)
+
+        # Flex slots go to the best remaining flex-eligible players.
+        flex_pool.sort(key=lambda rp: -val(rp))
+        for rp in flex_pool[:self._flex_slots()]:
+            locked.add(rp.player.platform_id)
+
+        chips = [
+            (rp, vm[rp.player.platform_id])
+            for players in by_pos.values() for rp in players
+            if rp.player.platform_id not in locked
+            and rp.player.platform_id in vm
+            and vm[rp.player.platform_id].value > 0
+        ]
+        chips.sort(key=lambda t: -t[1].value)
+        return chips
 
     def roster_needs(self, roster: Roster) -> dict[Position, dict]:
         """Per-position startable depth vs. starter requirement for one team.
@@ -279,51 +350,77 @@ class TradeToolContext(ToolContext):
                 flag = "SURPLUS" if n["surplus"] > 0 else ("NEED" if n["surplus"] < 0 else "ok")
                 parts.append(f"{pos.value}:{n['startable']}startable/{n['required']}req({flag})")
             lines.append(f"  Team {r.team_id}{tag} {r.owner_name}: " + " ".join(parts))
+
+        mine = self.trade_chips(self.roster())
+        lines.append(
+            "\nMY TRADEABLE DEPTH (players beyond my starting lineup, incl. bench — "
+            "these are what I can realistically give up, even though they do not "
+            "clear the startable baseline):"
+        )
+        if mine:
+            for rp, av in mine:
+                slot = "starter" if rp.is_starter else "bench"
+                lines.append(f"  {rp.player.platform_id} | {rp.player.name} "
+                             f"({rp.player.position.value}, {slot}) | value {av.value:.0f}")
+        else:
+            lines.append("  (none — every rostered asset is needed to fill a starting slot)")
         return "\n".join(lines)
 
     def _tool_find_trade_targets(self, tool_input: dict) -> str:
         want = tool_input.get("want_position")
         offer = tool_input.get("offer_position")
-        vm = self.value_map()
         my_roster = self.roster()
         my_needs = self.roster_needs(my_roster)
+        my_chips = self.trade_chips(my_roster)
 
         want_positions = [Position(want)] if want else [
             p for p, n in my_needs.items() if n["surplus"] < 0]
-        offer_positions = [Position(offer)] if offer else [
-            p for p, n in my_needs.items() if n["surplus"] > 0]
+        chip_positions: list[Position] = []
+        for rp, _ in my_chips:
+            if rp.player.position not in chip_positions:
+                chip_positions.append(rp.player.position)
+        offer_positions = [Position(offer)] if offer else chip_positions
+
+        want_note = ""
         if not want_positions:
             want_positions = list(SCAN_POSITIONS)
+            want_note = " (no clear need — scanning all)"
+        offer_note = ""
         if not offer_positions:
             offer_positions = list(SCAN_POSITIONS)
+            offer_note = " (no tradeable depth — scanning all)"
 
-        lines = [f"Trade-target scan (I want {[p.value for p in want_positions]}, "
-                 f"can offer surplus at {[p.value for p in offer_positions]}):"]
+        lines = [f"Trade-target scan. I want {[p.value for p in want_positions]}{want_note}; "
+                 f"I can offer from {[p.value for p in offer_positions]}{offer_note}."]
+        if my_chips:
+            top = ", ".join(f"{rp.player.name} ({rp.player.position.value} {av.value:.0f})"
+                            for rp, av in my_chips[:4])
+            lines.append(f"  My best chips: {top}")
+
         for r in self.all_rosters():
             if r.team_id == self.team_id:
                 continue
             their_needs = self.roster_needs(r)
-            # Positions where THEY have surplus and I want
-            they_offer = [p for p in want_positions if their_needs.get(p, {}).get("surplus", 0) > 0]
-            # Positions where THEY need and I have surplus → my leverage
-            they_need = [p for p in offer_positions if their_needs.get(p, {}).get("surplus", 0) < 0]
-            if not they_offer and not they_need:
+            their_chips = self.trade_chips(r)
+            # What they could realistically give up at a position I want.
+            gettable = [(rp, av) for rp, av in their_chips
+                        if rp.player.position in want_positions][:3]
+            # Where they are short and my depth is leverage.
+            they_need = [p for p in offer_positions
+                         if their_needs.get(p, {}).get("surplus", 0) < 0]
+            if not gettable and not they_need:
                 continue
             lines.append(f"\n  Team {r.team_id} ({r.owner_name}):")
-            for p in they_offer:
-                cands = sorted(
-                    [rp.player for rp in r.players if rp.player.position == p],
-                    key=lambda pl: -(vm[pl.platform_id].value if pl.platform_id in vm else 0.0),
-                )[:3]
-                if cands:
-                    lines.append(f"    acquire {p.value}: " + ", ".join(
-                        f"{c.name}({c.platform_id}, val "
-                        f"{vm[c.platform_id].value:.0f})" for c in cands if c.platform_id in vm))
+            for rp, av in gettable:
+                slot = "starter" if rp.is_starter else "bench"
+                lines.append(f"    could acquire: {rp.player.name} "
+                             f"({rp.player.position.value}, {slot}) value {av.value:.0f} "
+                             f"[{rp.player.platform_id}]")
             if they_need:
-                lines.append(f"    they NEED: {[p.value for p in they_need]} "
-                             f"(your surplus is leverage)")
-        if len(lines) == 1:
-            lines.append("  No clear cross-roster fits from surplus/need alone.")
+                lines.append(f"    they NEED {[p.value for p in they_need]} — "
+                             f"my depth there is leverage")
+        if len(lines) <= 2:
+            lines.append("  No cross-roster fits found.")
         return "\n".join(lines)
 
     def _tool_get_trade_value(self, tool_input: dict) -> str:

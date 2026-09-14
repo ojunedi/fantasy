@@ -104,3 +104,57 @@ def test_value_map_falls_back_to_model_when_market_empty():
     # In-house model path: QB gets the 0.85 scarcity multiplier, value > 0.
     assert vm["qb2"].source == "model"
     assert vm["qb2"].value > 0
+
+
+def _chip_settings():
+    slots = [
+        RosterSlot(slot_id="qb", position=Position.QB, is_starter=True),
+        RosterSlot(slot_id="wr1", position=Position.WR, is_starter=True),
+        RosterSlot(slot_id="wr2", position=Position.WR, is_starter=True),
+        RosterSlot(slot_id="flex", position=Position.FLEX, is_starter=True),
+        RosterSlot(slot_id="be0", position=Position.BENCH, is_starter=False),
+    ]
+    return LeagueSettings(
+        platform=Platform.ESPN, league_id="t", season=2026, team_count=12,
+        roster_slots=slots, scoring_rules=ScoringRules(rules=[]),
+        waiver_type=WaiverType.SNAKE, faab_budget=None,
+        playoff_start_week=15, playoff_weeks=[15, 16, 17],
+        regular_season_weeks=list(range(1, 15)),
+    )
+
+
+def test_trade_chips_includes_bench_and_respects_flex():
+    """Depth beyond the starting lineup is tradeable even below replacement."""
+    from fantasy_gm.models import Player, PlayerStatus, Roster, RosterPlayer
+
+    def rp(pid, pos, starter):
+        p = Player(platform_id=pid, name=pid, position=pos,
+                   eligible_positions=[pos], status=PlayerStatus.ACTIVE)
+        return RosterPlayer(player=p, slot=pos, is_starter=starter)
+
+    players = [
+        rp("q1", Position.QB, True), rp("q2", Position.QB, False),
+        rp("w1", Position.WR, True), rp("w2", Position.WR, True),
+        rp("w3", Position.WR, True), rp("w4", Position.WR, False),
+    ]
+    market = {
+        "q1": MarketValue(value=1000, position="QB", position_rank=5, overall_rank=40),
+        "q2": MarketValue(value=500, position="QB", position_rank=20, overall_rank=150),
+        "w1": MarketValue(value=2000, position="WR", position_rank=3, overall_rank=10),
+        "w2": MarketValue(value=1500, position="WR", position_rank=8, overall_rank=25),
+        "w3": MarketValue(value=800, position="WR", position_rank=30, overall_rank=90),
+        "w4": MarketValue(value=300, position="WR", position_rank=60, overall_rank=200),
+    }
+    ctx = TradeToolContext(adapter=None, settings=_chip_settings(), team_id="8",
+                           week=1, season=2026, market_fn=lambda **k: market)
+    ctx._player_index = {p.player.platform_id: {"position": p.player.position,
+                                                "name": p.player.platform_id, "team": "X"}
+                         for p in players}
+    ctx._weekly_proj = {pid: 10.0 for pid in market}
+    ctx._roster = Roster(team_id="8", team_name="T", owner_name="Me",
+                         players=players, week=1, season=2026)
+
+    chips = [rp_.player.platform_id for rp_, _ in ctx.trade_chips(ctx._roster)]
+    # q1 locked at QB; w1/w2 locked at WR; w3 takes the flex slot as the best
+    # remaining flex-eligible player. What's left is genuinely tradeable.
+    assert chips == ["q2", "w4"]
