@@ -35,6 +35,14 @@ cannot exercise:
 - CITE THE SPECIFIC SIGNALS that drove each non-obvious decision. "Start X over \
   Y" is not acceptable without the reason ("...because Y is QUESTIONABLE with a \
   DNP Friday and X has a top-5 matchup"). Vague reasoning is a failure.
+- A projection at or near 0.0 is an AVAILABILITY FLAG, not a score. ESPN zeroes \
+  players it expects not to play (ruled out, inactive, bye week). NEVER read a \
+  0.0 as "he will score nothing." If a near-zero player's injury status is \
+  ACTIVE or QUESTIONABLE (a contradiction the projection tool flags as SUSPECT), \
+  you MUST corroborate with `nfl_news`/`search_web` (and check for a bye) before \
+  starting or benching on that number — or `abstain` if it is material and stays \
+  unresolved. A near-zero that AGREES with an OUT/IR/SUSPENDED status is benign: \
+  treat the player as unavailable, no research needed.
 - If key inputs are missing or stale (e.g. projections are unavailable, or a \
   starter's injury status is ambiguous close to kickoff), and this materially \
   affects the call, prefer `abstain` over a confident guess. A good abstention \

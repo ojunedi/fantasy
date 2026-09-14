@@ -14,6 +14,15 @@ from typing import Any
 
 from fantasy_gm.agent.base import ToolContext
 from fantasy_gm.core.optimizer import optimize_lineup, projected_score
+from fantasy_gm.models import PlayerStatus
+
+# A projection at/below this is an AVAILABILITY FLAG, not a score: ESPN zeroes
+# players it expects not to play (ruled out, inactive, bye), so a ~0 must be
+# reconciled against injury status rather than read as "will score nothing".
+_ZERO_PROJ_THRESHOLD = 0.5
+_RULED_OUT_STATUSES = frozenset(
+    {PlayerStatus.OUT, PlayerStatus.IR, PlayerStatus.SUSPENDED}
+)
 
 
 # --------------------------------------------------------------------------
@@ -186,12 +195,62 @@ class LineupToolContext(ToolContext):
         age = f"{avail.age_seconds:.0f}s" if avail and avail.age_seconds is not None else "n/a"
         lines = [f"ESPN projections (age: {age}, {avail.note}):" if avail else "Projections:"]
         for pid, pj in sorted(sig.projections.items(), key=lambda x: -x[1].projected_points):
-            lines.append(f"  {pid} | {pj.player_name} ({pj.position.value}) | proj={pj.projected_points}")
+            flag = "  <-- ZERO/near-zero (see AVAILABILITY FLAGS)" \
+                if pj.projected_points <= _ZERO_PROJ_THRESHOLD else ""
+            lines.append(
+                f"  {pid} | {pj.player_name} ({pj.position.value}) "
+                f"| proj={pj.projected_points}{flag}"
+            )
         missing = [rp.player.name for rp in self.roster().players
                    if rp.player.platform_id not in sig.projections]
         if missing:
             lines.append(f"NO PROJECTION for: {', '.join(missing)}")
+
+        flag_lines = self._availability_flag_lines()
+        if flag_lines:
+            lines.append("")
+            lines.extend(flag_lines)
         return "\n".join(lines)
+
+    def _availability_flag_lines(self) -> list[str]:
+        """Reconcile each near-zero / missing projection against injury status.
+
+        A ~0 projection is ESPN encoding likely unavailability, not a score. When
+        it agrees with a ruled-out status it's benign; when it contradicts an
+        ACTIVE/QUESTIONABLE status it's SUSPECT and must be corroborated with
+        news before it drives a decision.
+        """
+        sig = self.signals()
+        lines: list[str] = []
+        for rp in self.roster().players:
+            pid = rp.player.platform_id
+            pj = sig.projections.get(pid)
+            proj = pj.projected_points if pj is not None else None
+            if proj is not None and proj > _ZERO_PROJ_THRESHOLD:
+                continue
+            missing = proj is None
+            # Signal-bundle injury status wins; else the roster's ESPN status.
+            inj = sig.injuries.get(pid)
+            status = inj.status if inj is not None else rp.player.status
+            proj_str = "MISSING" if missing else f"{proj}"
+            head = f"  * {rp.player.name} ({rp.player.position.value}) — proj {proj_str}"
+            if status in _RULED_OUT_STATUSES:
+                lines.append(
+                    f"{head}, consistent with status {status.value}. "
+                    f"Treat as unavailable — do not start. No news check needed."
+                )
+            else:
+                lines.append(
+                    f"{head} but status is {status.value} (CONTRADICTION). "
+                    f"SUSPECT: a ~0/blank projection is ESPN flagging likely "
+                    f"unavailability (bye, inactive, or missing data), NOT a "
+                    f"prediction of 0 points. Do NOT start or bench on this number "
+                    f"alone — corroborate with nfl_news/search_web (and check for a "
+                    f"bye) before it drives the decision, or abstain if unresolved."
+                )
+        if lines:
+            lines.insert(0, "!! AVAILABILITY FLAGS (near-zero or missing projections):")
+        return lines
 
     def _tool_get_signals(self, _: dict) -> str:
         sig = self.signals()
@@ -246,7 +305,7 @@ class LineupToolContext(ToolContext):
             return f"Illegal: unknown player_ids not on roster: {unknown}"
 
         # Assign starters to slots greedily to test legality
-        from fantasy_gm.core.roster import required_starter_slots, slot_accepts
+        from fantasy_gm.core.roster import required_starter_slots
         slots = required_starter_slots(self.settings)
         if len(starters) != len(slots):
             return (f"Illegal: {len(starters)} starters given but {len(slots)} starter "
