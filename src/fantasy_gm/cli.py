@@ -89,6 +89,10 @@ def cmd_propose_trades(args: argparse.Namespace) -> None:
     print(f"Supervisor posture: {posture.posture.upper()} — {posture.rationale}")
     ctx.posture = posture.posture
 
+    if not getattr(args, "no_interview", False):
+        from fantasy_gm.memo.interview import interview_trade_preferences
+        ctx.preferences = interview_trade_preferences(ctx)
+
     print(f"Running Trade agent for week {args.week}, season {args.season}...")
     record = TradeGraphAgent(AgentConfig()).decide(ctx)
 
@@ -155,6 +159,8 @@ def main() -> None:
     p_trade = sub.add_parser("propose-trades", help="Run the Trade agent for a week")
     p_trade.add_argument("--week", type=int, required=True)
     p_trade.add_argument("--season", type=int, default=2026)
+    p_trade.add_argument("--no-interview", action="store_true",
+                         help="Skip the trade brief and run the standard scan.")
     p_trade.set_defaults(func=cmd_propose_trades)
 
     p_bt = sub.add_parser("backtest", help="Replay historical weeks vs. baselines")

@@ -61,6 +61,8 @@ class TradeToolContext(ToolContext):
     news_fn: Callable[..., dict] | None = None
     # Market-value fetch (FantasyCalc); injectable for offline tests.
     market_fn: Callable[..., dict] | None = None
+    # Optional manager directives from the pre-run interview. None = unconstrained.
+    preferences: Any = None
 
     # ---- lazy builders -------------------------------------------------
 
@@ -397,8 +399,17 @@ class TradeToolContext(ToolContext):
         my_needs = self.roster_needs(my_roster)
         my_chips = self.trade_chips(my_roster)
 
-        want_positions = [Position(want)] if want else [
-            p for p, n in my_needs.items() if n["need"]]
+        prefs = self.preferences
+        # Manager directives win over the computed scan; an explicit tool
+        # argument wins over both.
+        pref_wants = list(getattr(prefs, "want_positions", []) or [])
+        if getattr(prefs, "offerable_ids", None):
+            allowed = set(prefs.offerable_ids)
+            my_chips = [(rp, av) for rp, av in my_chips
+                        if rp.player.platform_id in allowed]
+
+        want_positions = [Position(want)] if want else (pref_wants or [
+            p for p, n in my_needs.items() if n["need"]])
         chip_positions: list[Position] = []
         for rp, _ in my_chips:
             if rp.player.position not in chip_positions:
@@ -409,10 +420,14 @@ class TradeToolContext(ToolContext):
         if not want_positions:
             want_positions = list(SCAN_POSITIONS)
             want_note = " (no clear need — scanning all)"
+        elif pref_wants and not want:
+            want_note = " (manager directive)"
         offer_note = ""
         if not offer_positions:
             offer_positions = list(SCAN_POSITIONS)
             offer_note = " (no tradeable depth — scanning all)"
+        elif getattr(prefs, "offerable_ids", None) and not offer:
+            offer_note = " (limited to the players you offered)"
 
         lines = [f"Trade-target scan. I want {[p.value for p in want_positions]}{want_note}; "
                  f"I can offer from {[p.value for p in offer_positions]}{offer_note}."]
@@ -420,6 +435,24 @@ class TradeToolContext(ToolContext):
             top = ", ".join(f"{rp.player.name} ({rp.player.position.value} {av.value:.0f})"
                             for rp, av in my_chips[:4])
             lines.append(f"  My best chips: {top}")
+
+        # Targets the manager named explicitly — surfaced whatever position they
+        # play, so a want-position filter cannot hide them.
+        targets = list(getattr(prefs, "target_ids", []) or [])
+        if targets:
+            vm = self.value_map()
+            idx = self.player_index()
+            for pid in targets:
+                info = idx.get(pid)
+                if not info:
+                    lines.append(f"  TARGET {pid}: not found on any roster")
+                    continue
+                av = vm.get(pid)
+                owner = info.get("owner_team_id", "?")
+                lines.append(f"  TARGET (manager asked for): {info['name']} "
+                             f"({info['position'].value}) on team {owner}, "
+                             f"value {av.value:.0f}" if av else
+                             f"  TARGET (manager asked for): {info['name']} on team {owner}")
 
         for r in self.all_rosters():
             if r.team_id == self.team_id:
@@ -609,10 +642,20 @@ class TradeToolContext(ToolContext):
     def _tool_propose_trades(self, tool_input: dict) -> str:
         import json
         idx = self.player_index()
+        prefs = self.preferences
         enriched = dict(tool_input)
         for pkg in enriched.get("trades", []):
-            pkg["send_names"] = [idx.get(i, {}).get("name", i) for i in pkg.get("send_player_ids", [])]
-            pkg["receive_names"] = [idx.get(i, {}).get("name", i) for i in pkg.get("receive_player_ids", [])]
+            send = pkg.get("send_player_ids", [])
+            receive = pkg.get("receive_player_ids", [])
+            pkg["send_names"] = [idx.get(i, {}).get("name", i) for i in send]
+            pkg["receive_names"] = [idx.get(i, {}).get("name", i) for i in receive]
+            # Record where a package contradicts the manager's directives. The
+            # human still decides — a near-miss is worth seeing, not hiding.
+            if prefs is not None and not prefs.is_empty():
+                names = {pid: info["name"] for pid, info in idx.items()}
+                problems = prefs.violations(send, receive, names)
+                if problems:
+                    pkg["directive_violations"] = problems
         return json.dumps(enriched)
 
     def _tool_abstain(self, tool_input: dict) -> str:

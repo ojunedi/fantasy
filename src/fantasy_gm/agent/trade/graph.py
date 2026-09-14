@@ -94,9 +94,17 @@ class TradeGraphAgent(GraphAgent):
 
         prior = _prior_proposals_block(ctx.week, ctx.season)
 
+        directives = ""
+        prefs = getattr(ctx, "preferences", None)
+        if prefs is not None and not prefs.is_empty():
+            from fantasy_gm.agent.trade.preferences import describe
+            names = {pid: info["name"] for pid, info in ctx.player_index().items()}
+            directives = describe(prefs, names) + "\n\n"
+
         return (
             f"Find and propose the best trades for team {ctx.team_id}, week {ctx.week}, "
             f"season {ctx.season}.{posture_line}\n\n"
+            f"{directives}"
             f"## Context (already fetched — do NOT call get_my_roster / get_all_rosters / get_roster_needs again)\n\n"
             f"{roster_txt}\n\n{all_txt}\n\n{needs_txt}\n"
             f"{prior}"

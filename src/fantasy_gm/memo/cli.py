@@ -80,6 +80,8 @@ def _render_trade_packages(record: DecisionRecord) -> None:
         print(f"      RECEIVE: {receive}")
         print(f"      why:   {t.get('rationale', '')}")
         print(f"      pitch: {t.get('counterparty_pitch', '')}")
+        for problem in t.get("directive_violations", []):
+            print(f"      ⚠  against your brief: {problem}")
     if rec.get("what_would_change_this"):
         print(f"\n  What would change this: {rec['what_would_change_this']}")
 
