@@ -13,6 +13,8 @@ Design notes:
 """
 from __future__ import annotations
 
+import time
+
 from fantasy_gm.agent.base import GraphAgent, ToolContext
 from fantasy_gm.agent.lc_tools import TERMINAL_TOOLS, build_lineup_tools
 from fantasy_gm.agent.prompts import LINEUP_SYSTEM_PROMPT
@@ -42,7 +44,11 @@ class LineupGraphAgent(GraphAgent):
         return build_lineup_tools(ctx, include_prefetch_tools=False)  # type: ignore[arg-type]
 
     def thread_id(self, ctx: ToolContext) -> str:
-        return f"lineup-{ctx.season}-w{ctx.week}-t{ctx.team_id}"
+        # Fresh thread each invocation. A stable id makes LangGraph resume the
+        # previous run's checkpoint, so re-running a week appended to the old
+        # message history instead of starting clean — the prompt grew every run
+        # and stale tool output leaked into the new decision.
+        return f"lineup-{ctx.season}-w{ctx.week}-t{ctx.team_id}-{int(time.time())}"
 
     def user_prompt(self, ctx: ToolContext) -> str:
         # Pre-fetch the five read tools deterministically so the LLM skips those
