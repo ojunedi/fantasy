@@ -160,17 +160,8 @@ class GraphAgent(ABC):
     def _build_llm(self):
         if self._llm is not None:
             return self._llm
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        from fantasy_gm.agent.config import shared_rate_limiter
-        return ChatGoogleGenerativeAI(
-            model=self.config.model,
-            google_api_key=self.config.google_api_key or None,
-            max_output_tokens=self.config.max_tokens,
-            # Shared with the sub-agents' `default_llm` so the RPM cap is
-            # process-wide, and low retries so a 429 can't burst.
-            rate_limiter=shared_rate_limiter(self.config.max_rpm),
-            max_retries=self.config.max_retries,
-        )
+        from fantasy_gm.agent.llm import build_chat_model
+        return build_chat_model(self.config)
 
     @staticmethod
     def _llm_description(llm: Any) -> str:

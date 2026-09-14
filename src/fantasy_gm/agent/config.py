@@ -6,11 +6,43 @@ from dataclasses import dataclass
 
 _DEFAULT_MODEL = "gemini-2.5-flash"
 
+# Per-provider default model, used when FANTASY_GM_MODEL is not set. The Groq
+# pick is a large-context model documented for tool use — this agent lives or
+# dies on reliable multi-tool calling, so the small/fast models are a bad fit.
+_DEFAULT_MODELS = {
+    "google": _DEFAULT_MODEL,
+    "groq": "openai/gpt-oss-120b",
+}
+
+
+def _resolve_model(provider: str) -> str:
+    """Pick the model for a provider. Model ids are provider-specific.
+
+    Override per provider with FANTASY_GM_GOOGLE_MODEL / FANTASY_GM_GROQ_MODEL.
+    The older generic FANTASY_GM_MODEL is honoured for google only — it has
+    always held a Gemini id, so applying it to another provider just sends an
+    unknown model name and 404s.
+    """
+    specific = os.environ.get(f"FANTASY_GM_{provider.upper()}_MODEL")
+    if specific:
+        return specific
+    if provider == "google":
+        return os.environ.get("FANTASY_GM_MODEL") or _DEFAULT_MODEL
+    return _DEFAULT_MODELS.get(provider, _DEFAULT_MODEL)
+
 
 @dataclass
 class AgentConfig:
-    model: str = os.environ.get("FANTASY_GM_MODEL", _DEFAULT_MODEL)
-    max_tokens: int = 16000
+    # "google" (Gemini) or "groq". Override with FANTASY_GM_PROVIDER.
+    provider: str = os.environ.get("FANTASY_GM_PROVIDER", "google")
+    # Blank means "resolve from the provider" — see __post_init__.
+    model: str = ""
+    groq_api_key: str = os.environ.get("GROQ_API_KEY", "")
+    # Max completion tokens per call. Providers reserve this against their
+    # tokens-per-minute quota, so an oversized value fails the request outright
+    # (Groq 413s on a 16k reservation). The agent only ever emits a tool call or
+    # a short memo, so a few thousand is ample. Override: FANTASY_GM_MAX_TOKENS.
+    max_tokens: int = int(os.environ.get("FANTASY_GM_MAX_TOKENS", "2048"))
     max_tool_iterations: int = 20  # safety cap on the agentic loop
     google_api_key: str = os.environ.get("GOOGLE_API_KEY", "")
     # Hard cap on LLM API calls per run (agent loop + LLM sub-agents share it),
@@ -31,6 +63,10 @@ class AgentConfig:
     # "compact" (default, one-line tool results) or "full" (untruncated outputs,
     # model reasoning, and empty-response diagnostics). Set FANTASY_GM_TRACE=full.
     trace: str = os.environ.get("FANTASY_GM_TRACE", "compact")
+
+    def __post_init__(self) -> None:
+        if not self.model:
+            self.model = _resolve_model(self.provider)
 
 
 _RATE_LIMITER = None

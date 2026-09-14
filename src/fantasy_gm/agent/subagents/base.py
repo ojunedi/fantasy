@@ -12,25 +12,21 @@ neutral result with a note rather than raising.
 from __future__ import annotations
 
 import json
-import os
 from typing import Any
 
 
 def default_llm(config=None):
-    """Build a ChatGoogleGenerativeAI, or return None if no API key is configured."""
-    if not os.environ.get("GOOGLE_API_KEY"):
-        return None
-    from fantasy_gm.agent.config import AgentConfig, shared_rate_limiter
-    from langchain_google_genai import ChatGoogleGenerativeAI
+    """Build the configured chat model, or None if that provider has no API key.
+
+    Goes through the shared factory so the process-wide rate limiter and retry
+    bound apply here exactly as they do for the main agent loop.
+    """
+    from fantasy_gm.agent.config import AgentConfig
+    from fantasy_gm.agent.llm import api_key_for, build_chat_model
     cfg = config or AgentConfig()
-    return ChatGoogleGenerativeAI(
-        model=cfg.model,
-        google_api_key=cfg.google_api_key or None,
-        max_output_tokens=1024,
-        # Same limiter object the main agent uses — see `shared_rate_limiter`.
-        rate_limiter=shared_rate_limiter(cfg.max_rpm),
-        max_retries=cfg.max_retries,
-    )
+    if not api_key_for(cfg):
+        return None
+    return build_chat_model(cfg, max_output_tokens=1024)
 
 
 def _message_text(msg: Any) -> str:
