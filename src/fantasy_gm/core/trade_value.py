@@ -38,7 +38,9 @@ class AssetValue:
     position: Position
     ros_points: float        # rest-of-season projected points
     scarcity: float
-    value: float             # ros_points * scarcity
+    value: float             # trade currency (market value, or ros_points*scarcity)
+    source: str = "model"    # "market" (FantasyCalc), "unranked", or "model"
+    note: str = ""           # e.g. market position rank "WR15"
 
 
 @dataclass(frozen=True)

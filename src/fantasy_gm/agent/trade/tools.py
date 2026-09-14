@@ -12,7 +12,7 @@ constructor so the graph tests run fully offline.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 
 from fantasy_gm.agent.base import ToolContext
@@ -51,6 +51,8 @@ class TradeToolContext(ToolContext):
     # Sub-agent callables (injectable for tests).
     injury_fn: Callable[..., dict] | None = None
     news_fn: Callable[..., dict] | None = None
+    # Market-value fetch (FantasyCalc); injectable for offline tests.
+    market_fn: Callable[..., dict] | None = None
 
     # ---- lazy builders -------------------------------------------------
 
@@ -114,12 +116,43 @@ class TradeToolContext(ToolContext):
         self._weekly_proj = {pid: bp.mean for pid, bp in blended.items()}
         return self._weekly_proj
 
+    def _market_values(self) -> dict:
+        """FantasyCalc market values for this league format ({} on failure)."""
+        num_qbs = sum(
+            1 for s in self.settings.roster_slots
+            if s.is_starter and s.position in (Position.QB, Position.SUPER_FLEX)
+        )
+        fn = self.market_fn
+        if fn is None:
+            from fantasy_gm.signals.sources.fantasycalc import get_market_values
+            fn = get_market_values
+        return fn(num_qbs=max(1, num_qbs), num_teams=self.settings.team_count, ppr=1.0)
+
     def value_map(self) -> dict[str, AssetValue]:
-        if self._value_map is None:
-            weekly = self.weekly_projections()
-            wr = self._weeks_remaining()
-            idx = self.player_index()
-            ros = {pid: weekly.get(pid, 0.0) * wr for pid in idx}
+        if self._value_map is not None:
+            return self._value_map
+        weekly = self.weekly_projections()
+        wr = self._weeks_remaining()
+        idx = self.player_index()
+
+        market = self._market_values()
+        if market:
+            # Market value is the trade currency. A player absent from the market
+            # list is waiver/replacement level (value 0) for trade purposes.
+            vm: dict[str, AssetValue] = {}
+            for pid, info in idx.items():
+                ros_val = round(weekly.get(pid, 0.0) * wr, 2)
+                mv = market.get(pid)
+                if mv is not None:
+                    value, source, note = round(mv.value, 1), "market", f"{mv.position}{mv.position_rank}"
+                else:
+                    value, source, note = 0.0, "unranked", "not in FantasyCalc top values"
+                vm[pid] = AssetValue(pid, info["position"], ros_points=ros_val,
+                                     scarcity=1.0, value=value, source=source, note=note)
+            self._value_map = vm
+        else:
+            # FantasyCalc unavailable → in-house ros×scarcity model.
+            ros = {pid: round(weekly.get(pid, 0.0) * wr, 2) for pid in idx}
             positions = {pid: info["position"] for pid, info in idx.items()}
             self._value_map = build_value_map(ros, positions)
         return self._value_map
@@ -297,16 +330,32 @@ class TradeToolContext(ToolContext):
         ids = tool_input.get("player_ids", [])
         vm = self.value_map()
         idx = self.player_index()
-        lines = ["Asset values (rest-of-season projection × positional scarcity):"]
+        # value_map is uniform (all market/unranked, or all model) — one entry tells us.
+        sample = next(iter(vm.values()), None)
+        market = sample is not None and sample.source in ("market", "unranked")
+        header = (
+            "Trade values (FantasyCalc market consensus for this league format — the "
+            "real currency other managers trade in; a value of 0 means waiver/"
+            "replacement level with no trade value):"
+            if market else
+            "Asset values (in-house rest-of-season projection × positional scarcity — "
+            "FantasyCalc market values unavailable):"
+        )
+        lines = [header]
         for pid in ids:
             av = vm.get(pid)
-            info = idx.get(pid, {})
             if av is None:
                 lines.append(f"  {pid}: no value (not found / no projection)")
                 continue
-            lines.append(f"  {pid} | {info.get('name', pid)} ({av.position.value}) "
-                         f"| RoS={av.ros_points:.1f} × scarcity {av.scarcity:.2f} "
-                         f"= value {av.value:.1f}")
+            prefix = f"  {pid} | {idx.get(pid, {}).get('name', pid)} ({av.position.value}) | "
+            if av.source == "market":
+                detail = f"value {av.value:.0f} (market {av.note})"
+            elif av.source == "unranked":
+                detail = "value 0 (waiver/replacement level — no trade value)"
+            else:
+                detail = (f"RoS={av.ros_points:.1f} × scarcity {av.scarcity:.2f} "
+                          f"= value {av.value:.1f}")
+            lines.append(prefix + detail)
         return "\n".join(lines)
 
     def _tool_evaluate_trade(self, tool_input: dict) -> str:
@@ -325,7 +374,7 @@ class TradeToolContext(ToolContext):
             return ", ".join(idx.get(p, {}).get("name", p) for p in pids)
 
         lines = [
-            f"Trade evaluation (my perspective):",
+            "Trade evaluation (my perspective):",
             f"  SEND ({names(send_ids)}): value {ev.send_value:.1f}",
             f"  RECEIVE ({names(receive_ids)}): value {ev.receive_value:.1f}",
             f"  EV delta: {ev.ev_delta:+.1f} | fairness {ev.fairness:.2f} | verdict: {ev.verdict.upper()}",
