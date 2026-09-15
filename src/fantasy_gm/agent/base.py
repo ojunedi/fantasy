@@ -199,14 +199,18 @@ class GraphAgent(ABC):
         terminal = ", ".join(sorted(self.terminal_tools))
 
         def agent_node(state: AgentState) -> dict:
-            prompt = [SystemMessage(content=system_prompt)] + state["messages"]
-            # On the last call in the budget, force a terminal decision.
+            # Exactly one system message, always. Anthropic exposes a single
+            # top-level `system` field and rejects non-consecutive system
+            # messages, so the final-turn directive is folded in here rather
+            # than appended as a second one.
+            system_text = system_prompt
             if ctx.llm_calls >= ctx.llm_budget - 1:
-                prompt.append(SystemMessage(content=(
-                    "LLM CALL BUDGET REACHED — this is your FINAL turn. Do NOT request "
-                    "any more read/compute tools. Using only what you have already "
-                    f"gathered, call exactly one terminal tool now ({terminal}); if the "
-                    "data is insufficient, call abstain.")))
+                system_text += (
+                    "\n\n## LLM CALL BUDGET REACHED — this is your FINAL turn.\n"
+                    "Do NOT request any more read/compute tools. Using only what you "
+                    f"have already gathered, call exactly one terminal tool now "
+                    f"({terminal}); if the data is insufficient, call abstain.")
+            prompt = [SystemMessage(content=system_text)] + state["messages"]
             # Retry transient provider errors here rather than in the client, so
             # each attempt passes through the shared rate limiter and stays
             # inside the requests/minute bound.

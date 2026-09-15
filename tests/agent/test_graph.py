@@ -197,6 +197,43 @@ class _FlakyModel:
         ])
 
 
+def test_exactly_one_system_message_is_sent(ctx):
+    """Anthropic rejects non-consecutive system messages — never send two.
+
+    The final-turn budget directive must be folded into the single system
+    message rather than appended as a second one.
+    """
+    from langchain_core.messages import SystemMessage
+
+    seen: list[int] = []
+
+    class _Recorder:
+        def __init__(self):
+            self.calls = 0
+
+        def bind_tools(self, tools):
+            return self
+
+        def invoke(self, messages):
+            seen.append(sum(1 for m in messages if isinstance(m, SystemMessage)))
+            self.calls += 1
+            if self.calls < 2:      # first turn: a non-terminal tool, so we loop
+                return AIMessage(content="", tool_calls=[
+                    {"name": "get_my_injury_summary", "args": {}, "id": f"t{self.calls}"}])
+            return AIMessage(content="", tool_calls=[
+                {"name": "abstain", "args": {"missing_information": ["x"],
+                                             "what_you_would_need": "y",
+                                             "memo": "z"}, "id": "t9"}])
+
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    # Budget 2 so the second turn is the final one and triggers the directive.
+    agent = LineupGraphAgent(AgentConfig(max_llm_calls=2), llm=_Recorder(),
+                             checkpoint_path=tmp)
+    agent.decide(ctx, verbose=False)
+
+    assert seen == [1, 1], f"expected one system message per call, got {seen}"
+
+
 def test_transient_provider_error_is_retried(ctx):
     """A 503 gets another attempt — through the rate limiter, not under it."""
     model = _FlakyModel(["503 UNAVAILABLE - model experiencing high demand"])
