@@ -6,7 +6,9 @@ from dataclasses import dataclass
 
 _DEFAULT_MODEL = "gemini-2.5-flash"
 
-# Per-provider default model, used when FANTASY_GM_MODEL is not set. The Groq
+# Per-provider default model. Anthropic is the default provider: Haiku 4.5
+# reached the terminal tool reliably and validated lineup legality unprompted,
+# which the free-tier alternatives did not. The Groq
 # pick is a large-context model documented for tool use — this agent lives or
 # dies on reliable multi-tool calling, so the small/fast models are a bad fit.
 _DEFAULT_MODELS = {
@@ -52,7 +54,7 @@ def _resolve_model(provider: str) -> str:
 @dataclass
 class AgentConfig:
     # "google" (Gemini), "groq", or "anthropic". Override with FANTASY_GM_PROVIDER.
-    provider: str = os.environ.get("FANTASY_GM_PROVIDER", "google")
+    provider: str = os.environ.get("FANTASY_GM_PROVIDER", "anthropic")
     # Blank means "resolve from the provider" — see __post_init__.
     model: str = ""
     groq_api_key: str = os.environ.get("GROQ_API_KEY", "")

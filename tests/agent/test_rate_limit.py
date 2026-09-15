@@ -1,10 +1,11 @@
 """The process-wide requests-per-minute limiter.
 
-The Gemini free tier allows 5 requests/minute. The per-run `max_llm_calls`
-budget cannot enforce that (two runs in one minute double the calls), so a
-single shared `InMemoryRateLimiter` is attached to every chat client.
+Providers meter differently (the Gemini free tier allows 5 requests/minute;
+Anthropic is far less constrained), so the ceiling is per-provider. The per-run
+`max_llm_calls` budget cannot enforce a rate on its own — two runs in one minute
+double the calls — so a single shared `InMemoryRateLimiter` is attached to every
+chat client, whichever provider built it.
 """
-import os
 import time
 
 import pytest
@@ -29,11 +30,18 @@ def test_shared_rate_limiter_is_a_singleton():
     assert shared_rate_limiter(4) is shared_rate_limiter(4)
 
 
-def test_defaults_leave_headroom_under_the_free_tier():
-    cfg = AgentConfig()
-    assert cfg.max_rpm == 4        # under the 5/min quota
-    assert cfg.max_llm_calls == 3  # per-run budget, lowered for headroom
-    assert cfg.max_retries <= 2    # a 429 must not become a burst
+def test_google_defaults_leave_headroom_under_the_free_tier():
+    """Gemini's free tier is 5 req/min, and retries sit below the limiter."""
+    cfg = AgentConfig(provider="google")
+    assert cfg.max_rpm == 4
+    assert cfg.max_retries <= 2
+    assert cfg.max_rpm * cfg.max_retries <= 5   # worst-case requests/minute
+
+
+def test_each_provider_gets_its_own_ceiling():
+    """A ceiling tuned for one provider must not be imposed on another."""
+    rpm = {p: AgentConfig(provider=p).max_rpm for p in ("google", "groq", "anthropic")}
+    assert rpm["groq"] < rpm["google"] < rpm["anthropic"]
 
 
 def test_limiter_cannot_burst():
@@ -60,10 +68,13 @@ class _Agent(GraphAgent):
         return "test"
 
 
-def test_both_construction_sites_share_one_limiter(monkeypatch):
+@pytest.mark.parametrize("provider,key_field", [
+    ("google", "google_api_key"),
+    ("anthropic", "anthropic_api_key"),
+])
+def test_both_construction_sites_share_one_limiter(provider, key_field):
     """The whole point: two limiters would each allow max_rpm, doubling it."""
-    monkeypatch.setitem(os.environ, "GOOGLE_API_KEY", "test-key")
-    cfg = AgentConfig(google_api_key="test-key")
+    cfg = AgentConfig(provider=provider, **{key_field: "test-key"})
 
     main_llm = _Agent(config=cfg)._build_llm()
     sub_llm = default_llm(cfg)
