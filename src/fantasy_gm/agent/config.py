@@ -14,6 +14,8 @@ _DEFAULT_MODELS = {
     # qwen over gpt-oss-120b: gpt-oss emitted JavaScript-style // comments
     # inside its JSON tool arguments, which the API rejects outright.
     "groq": "qwen/qwen3.8-27b",
+    # Haiku 4.5. Model ids here are never date-suffixed.
+    "anthropic": "claude-haiku-4-5",
 }
 
 
@@ -22,8 +24,8 @@ _DEFAULT_MODELS = {
 # charges the *reserved* max_tokens against it, so a large reservation fails the
 # request outright — and only ~1 call/min fits. Gemini meters requests, not
 # output, so it can afford a bigger reservation and a faster cadence.
-_DEFAULT_MAX_TOKENS = {"google": 2048, "groq": 900}
-_DEFAULT_MAX_RPM = {"google": 4.0, "groq": 1.0}
+_DEFAULT_MAX_TOKENS = {"google": 2048, "groq": 900, "anthropic": 4096}
+_DEFAULT_MAX_RPM = {"google": 4.0, "groq": 1.0, "anthropic": 20.0}
 
 # Reasoning models bill their internal reasoning against max_tokens. On Groq's
 # 1,000 output-tokens/minute free cap that is fatal: gpt-oss-120b spent 898 of
@@ -49,11 +51,16 @@ def _resolve_model(provider: str) -> str:
 
 @dataclass
 class AgentConfig:
-    # "google" (Gemini) or "groq". Override with FANTASY_GM_PROVIDER.
+    # "google" (Gemini), "groq", or "anthropic". Override with FANTASY_GM_PROVIDER.
     provider: str = os.environ.get("FANTASY_GM_PROVIDER", "google")
     # Blank means "resolve from the provider" — see __post_init__.
     model: str = ""
     groq_api_key: str = os.environ.get("GROQ_API_KEY", "")
+    anthropic_api_key: str = os.environ.get("ANTHROPIC_API_KEY", "")
+    # Only needed when the Anthropic key is NOT scoped to a workspace — the API
+    # then rejects the request and asks for this id as a header. A
+    # workspace-scoped key needs nothing here.
+    anthropic_workspace_id: str = os.environ.get("ANTHROPIC_WORKSPACE_ID", "")
     # Max completion tokens per call. Providers reserve this against their
     # tokens-per-minute quota, so an oversized value fails the request outright
     # (Groq 413s on a 16k reservation). The agent only ever emits a tool call or

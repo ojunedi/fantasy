@@ -6,7 +6,7 @@ Both the agent loop (`GraphAgent._build_llm`) and the LLM sub-agents
 limiter and the retry bound apply whichever provider is selected. Building a
 chat client anywhere else would escape both guards.
 
-Provider is chosen with FANTASY_GM_PROVIDER (google | groq); the model defaults
+Provider is chosen with FANTASY_GM_PROVIDER (google | groq | anthropic); the model defaults
 per provider and can be overridden with FANTASY_GM_MODEL.
 """
 from __future__ import annotations
@@ -16,9 +16,12 @@ from typing import Any
 from fantasy_gm.agent.config import AgentConfig, shared_rate_limiter
 
 
+_KEY_FIELD = {"groq": "groq_api_key", "anthropic": "anthropic_api_key"}
+
+
 def api_key_for(config: AgentConfig) -> str:
     """The API key that matters for the configured provider."""
-    return config.groq_api_key if config.provider == "groq" else config.google_api_key
+    return getattr(config, _KEY_FIELD.get(config.provider, "google_api_key"))
 
 
 def build_chat_model(config: AgentConfig | None = None,
@@ -27,6 +30,20 @@ def build_chat_model(config: AgentConfig | None = None,
     cfg = config or AgentConfig()
     max_out = max_output_tokens or cfg.max_tokens
     limiter = shared_rate_limiter(cfg.max_rpm)
+
+    if cfg.provider == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        # An unscoped key must name its workspace explicitly; a scoped key must not.
+        headers = ({"anthropic-workspace-id": cfg.anthropic_workspace_id}
+                   if cfg.anthropic_workspace_id else None)
+        return ChatAnthropic(
+            model=cfg.model,
+            anthropic_api_key=cfg.anthropic_api_key or None,
+            max_tokens=max_out,
+            rate_limiter=limiter,
+            max_retries=cfg.max_retries,
+            default_headers=headers,
+        )
 
     if cfg.provider == "groq":
         from langchain_groq import ChatGroq
