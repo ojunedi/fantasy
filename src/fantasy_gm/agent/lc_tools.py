@@ -16,6 +16,7 @@ from typing import Any
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
+from fantasy_gm.agent.schema import StrList, dict_list
 from fantasy_gm.agent.tools import LineupToolContext
 from fantasy_gm.signals.news import get_nfl_news, web_search
 
@@ -33,7 +34,7 @@ class OptimizeLineupArgs(BaseModel):
 
 
 class CheckLegalityArgs(BaseModel):
-    starter_player_ids: list[str] = Field(description="player_ids you intend to start.")
+    starter_player_ids: StrList = Field(description="player_ids you intend to start.")
 
 
 class LineupChange(BaseModel):
@@ -43,8 +44,8 @@ class LineupChange(BaseModel):
 
 
 class ProposeLineupArgs(BaseModel):
-    starter_player_ids: list[str] = Field(description="The player_ids to start.")
-    changes_from_current: list[LineupChange] = Field(
+    starter_player_ids: StrList = Field(description="The player_ids to start.")
+    changes_from_current: dict_list(LineupChange) = Field(
         description="Swaps vs. the current lineup, each with a cited reason. "
                     "Empty if you endorse the current lineup unchanged.",
     )
@@ -54,7 +55,7 @@ class ProposeLineupArgs(BaseModel):
 
 
 class AbstainArgs(BaseModel):
-    missing_information: list[str] = Field(description="What inputs are missing or too stale.")
+    missing_information: StrList = Field(description="What inputs are missing or too stale.")
     what_you_would_need: str = Field(description="What you'd need to make the call.")
     memo: str = Field(description="Short explanation for the human.")
 

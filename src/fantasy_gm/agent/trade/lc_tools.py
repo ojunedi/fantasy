@@ -16,6 +16,7 @@ from typing import Any
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
+from fantasy_gm.agent.schema import StrList, dict_list
 from fantasy_gm.agent.trade.tools import TradeToolContext
 
 TERMINAL_TOOLS = {"propose_trades", "abstain"}
@@ -29,12 +30,12 @@ class FindTargetsArgs(BaseModel):
 
 
 class PlayerIdsArgs(BaseModel):
-    player_ids: list[str] = Field(description="Player ids — pass them all in one call.")
+    player_ids: StrList = Field(description="Player ids — pass them all in one call.")
 
 
 class EvaluateTradeArgs(BaseModel):
-    send_player_ids: list[str] = Field(description="Player ids I send.")
-    receive_player_ids: list[str] = Field(description="Player ids I receive.")
+    send_player_ids: StrList = Field(description="Player ids I send.")
+    receive_player_ids: StrList = Field(description="Player ids I receive.")
     counterparty_team_id: str | None = Field(default=None, description="The other team's id.")
 
 
@@ -49,21 +50,21 @@ class MatchupArgs(BaseModel):
 
 class TradePackage(BaseModel):
     counterparty_team_id: str = Field(description="The team id to trade with.")
-    send_player_ids: list[str] = Field(description="Player ids I send.")
-    receive_player_ids: list[str] = Field(description="Player ids I receive.")
+    send_player_ids: StrList = Field(description="Player ids I send.")
+    receive_player_ids: StrList = Field(description="Player ids I receive.")
     rationale: str = Field(description="Why this helps me, citing specific signals (value/matchup/SoS/usage).")
     counterparty_pitch: str = Field(description="Why the other owner should accept — framed for their situation.")
     confidence: float = Field(ge=0.0, le=1.0, description="Honest confidence 0-1.")
 
 
 class ProposeTradesArgs(BaseModel):
-    trades: list[TradePackage] = Field(description="Ranked trade packages, best first.")
+    trades: dict_list(TradePackage) = Field(description="Ranked trade packages, best first.")
     memo: str = Field(description="Short GM memo summarizing the trade strategy this week.")
     what_would_change_this: str = Field(description="What new info would change these proposals.")
 
 
 class AbstainArgs(BaseModel):
-    missing_information: list[str] = Field(description="What inputs are missing or too thin.")
+    missing_information: StrList = Field(description="What inputs are missing or too thin.")
     what_you_would_need: str = Field(description="What you'd need to find a good trade.")
     memo: str = Field(description="Short explanation for the human.")
 
