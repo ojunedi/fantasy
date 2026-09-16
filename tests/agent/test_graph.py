@@ -431,11 +431,18 @@ def test_final_turn_requests_tool_choice_any(ctx):
     seen: list[dict] = []
 
     class _Model:
+        def __init__(self):
+            self.calls = 0
+
         def bind_tools(self, tools, **kwargs):
             seen.append({"names": [t.name for t in tools], "kwargs": kwargs})
             return self
 
         def invoke(self, messages):
+            self.calls += 1
+            if self.calls == 1:      # burn a turn so a final turn exists
+                return AIMessage(content="", tool_calls=[
+                    {"name": "get_my_injury_summary", "args": {}, "id": "a"}])
             return AIMessage(content="", tool_calls=[
                 {"name": "abstain", "args": {"missing_information": ["x"],
                                              "what_you_would_need": "y",
@@ -455,6 +462,7 @@ def test_binding_falls_back_when_tool_choice_is_unsupported(ctx):
     class _Picky:
         def __init__(self):
             self.rejected = 0
+            self.calls = 0
 
         def bind_tools(self, tools, **kwargs):
             if kwargs:
@@ -463,6 +471,10 @@ def test_binding_falls_back_when_tool_choice_is_unsupported(ctx):
             return self
 
         def invoke(self, messages):
+            self.calls += 1
+            if self.calls == 1:
+                return AIMessage(content="", tool_calls=[
+                    {"name": "get_my_injury_summary", "args": {}, "id": "a"}])
             return AIMessage(content="", tool_calls=[
                 {"name": "abstain", "args": {"missing_information": ["x"],
                                              "what_you_would_need": "y",
@@ -472,7 +484,7 @@ def test_binding_falls_back_when_tool_choice_is_unsupported(ctx):
     tmp = Path(tempfile.mkdtemp()) / "cp.db"
     record = LineupGraphAgent(AgentConfig(max_llm_calls=2), llm=model,
                               checkpoint_path=tmp).decide(ctx, verbose=False)
-    assert model.rejected == 1
+    assert model.rejected >= 1                          # tool_choice was tried
     assert record.recommendation["abstained"] is True   # ran anyway
 
 

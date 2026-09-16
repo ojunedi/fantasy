@@ -125,7 +125,7 @@ _TRANSIENT_MARKERS = ("503", "500", "502", "504", "unavailable",
                       "high demand", "overloaded", "internal error")
 
 
-def _bind_forced(llm: Any, tools: list) -> Any:
+def _bind_forced(llm: Any, tools: list, choice: str = "any") -> Any:
     """Bind `tools` and require the model to call one of them.
 
     Withdrawing the other tools is not enough on its own: offered only
@@ -137,10 +137,12 @@ def _bind_forced(llm: Any, tools: list) -> Any:
     Falls back to a plain binding when the provider or a test double does not
     accept `tool_choice`, so this can never break a run.
     """
-    try:
-        return llm.bind_tools(tools, tool_choice="any")
-    except Exception:
-        return llm.bind_tools(tools)
+    for attempt in (choice, "any"):
+        try:
+            return llm.bind_tools(tools, tool_choice=attempt)
+        except Exception:
+            continue
+    return llm.bind_tools(tools)
 
 
 def _strip_non_terminal(response: Any, terminal_tools: frozenset[str]) -> Any:
@@ -210,6 +212,15 @@ class GraphAgent(ABC):
     def build_record(self, ctx: ToolContext, messages: list) -> DecisionRecord:
         ...
 
+    def final_tool_choice(self, ctx: ToolContext) -> str:
+        """Which terminal tool to force on the final turn.
+
+        A tool name constrains the provider harder than "any". Subclasses that
+        can tell from their own state whether a recommendation is warranted
+        should name the tool; the default leaves the model the choice.
+        """
+        return "any"
+
     # ---- shared machinery ---------------------------------------------
 
     def _build_llm(self):
@@ -237,7 +248,16 @@ class GraphAgent(ABC):
         # proposal. Removing the other tools makes that outcome unreachable
         # rather than merely discouraged.
         terminal_only = [t for t in tools if getattr(t, "name", None) in self.terminal_tools]
-        bound_terminal = _bind_forced(llm, terminal_only) if terminal_only else bound
+        forced_cache: dict[str, Any] = {}
+
+        def terminal_model():
+            """Bind the terminal tools, forcing whichever one now applies."""
+            if not terminal_only:
+                return bound
+            choice = self.final_tool_choice(ctx)
+            if choice not in forced_cache:
+                forced_cache[choice] = _bind_forced(llm, terminal_only, choice)
+            return forced_cache[choice]
 
         # Set when a turn comes back with no tool call at all, so the retry is
         # offered only the terminal tools.
@@ -273,7 +293,7 @@ class GraphAgent(ABC):
                     f"remain ({terminal}). Using only what you have already gathered, "
                     "call exactly one of them now; if the data is insufficient, call "
                     "abstain.")
-            model = bound_terminal if final_turn else bound
+            model = terminal_model() if final_turn else bound
             prompt = [SystemMessage(content=system_text)] + state["messages"]
             # Retry transient provider errors here rather than in the client, so
             # each attempt passes through the shared rate limiter and stays
