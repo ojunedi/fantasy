@@ -187,7 +187,35 @@ class TradeGraphAgent(GraphAgent):
             "tool_calls": ctx.call_log,
         }
 
-        if terminal_tool == "propose_trades" and terminal_result:
+        if (terminal_tool == "propose_trades" and terminal_result
+                and not terminal_result.get("trades")
+                and terminal_result.get("refused_trades")):
+            # Every package it submitted shipped a player the manager withheld,
+            # so all were dropped. Presenting an empty proposal would read as a
+            # 0%-confidence recommendation; fall back to the priced packages
+            # that DO respect the brief, and say plainly what was refused.
+            refused = terminal_result["refused_trades"]
+            viable = self._viable(ctx)
+            if viable:
+                recommendation = {
+                    "trades": [_package_from_evaluation(e) for e in viable[:3]],
+                    "selected_deterministically": True,
+                    "reason": "Every package the agent submitted sent a player you "
+                              "withheld and was refused; these respect your brief.",
+                    "refused_trades": refused,
+                }
+                memo = (f"{len(refused)} proposal(s) were refused for sending players "
+                        f"you did not offer. Substituted the best-scoring packages "
+                        f"that stay inside your brief.")
+                confidence = min(0.5, 0.2 + viable[0]["fairness"] * 0.3)
+            else:
+                recommendation = {"abstained": True, "refused_trades": refused,
+                                  "reason": "all proposals sent players you withheld"}
+                memo = (f"No recommendation: all {len(refused)} proposal(s) sent players "
+                        f"you did not offer, and no package inside your brief scores "
+                        f"well enough to recommend.")
+                confidence = 0.0
+        elif terminal_tool == "propose_trades" and terminal_result:
             recommendation = terminal_result
             memo = terminal_result.get("memo", "")
             trades = terminal_result.get("trades", [])

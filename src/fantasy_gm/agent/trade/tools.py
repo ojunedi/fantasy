@@ -615,6 +615,24 @@ class TradeToolContext(ToolContext):
     def _tool_evaluate_trade(self, tool_input: dict) -> str:
         send_ids = tool_input.get("send_player_ids", [])
         receive_ids = tool_input.get("receive_player_ids", [])
+
+        # Refuse to price a package that sends players the manager did not
+        # offer. Blocking it HERE is what makes the brief stick: a package that
+        # is never priced can never be proposed, and the model gets a usable
+        # error instead of a number that tempts it to argue.
+        prefs = self.preferences
+        if prefs is not None:
+            stray = prefs.forbidden_sends(send_ids)
+            if stray:
+                idx = self.player_index()
+                names = ", ".join(idx.get(p, {}).get("name", p) for p in stray)
+                allowed = ", ".join(
+                    f"{idx.get(p, {}).get('name', p)} [{p}]"
+                    for p in prefs.offerable_ids)
+                return (f"REJECTED — not evaluated. This package sends {names}, whom "
+                        f"the manager did NOT offer. Only these players may be sent: "
+                        f"{allowed}. Rebuild the package using only those.")
+
         vm = self.value_map()
         idx = self.player_index()
         weekly = self.weekly_projections()
@@ -830,17 +848,30 @@ class TradeToolContext(ToolContext):
         constrained = prefs is not None and not prefs.is_empty()
         names = self.name_map() if constrained else {}
         enriched = dict(tool_input)
+        kept, refused = [], []
         for pkg in enriched.get("trades", []):
             send = pkg.get("send_player_ids", [])
             receive = pkg.get("receive_player_ids", [])
             pkg["send_names"] = [idx.get(i, {}).get("name", i) for i in send]
             pkg["receive_names"] = [idx.get(i, {}).get("name", i) for i in receive]
-            # Record where a package contradicts the manager's directives. The
-            # human still decides — a near-miss is worth seeing, not hiding.
+            # A package sending players the manager withheld is dropped, not
+            # flagged: showing it invites approving a trade they ruled out.
+            stray = prefs.forbidden_sends(send) if constrained else []
+            if stray:
+                pkg["refused_because"] = ("sends players you did not offer: "
+                                          + ", ".join(names.get(p, p) for p in stray))
+                refused.append(pkg)
+                continue
+            # Every OTHER way a package misses the brief stays advisory — a
+            # near-miss that is otherwise good is worth seeing.
             if constrained:
                 problems = prefs.violations(send, receive, names)
                 if problems:
                     pkg["directive_violations"] = problems
+            kept.append(pkg)
+        enriched["trades"] = kept
+        if refused:
+            enriched["refused_trades"] = refused
         return json.dumps(enriched)
 
     def _tool_abstain(self, tool_input: dict) -> str:
@@ -889,9 +920,10 @@ def acceptable_packages(evaluations: list[dict], preferences: Any = None,
         if ev.get("ev_delta", 0.0) < _MIN_EV_DELTA:
             continue
         if preferences is not None and not preferences.is_empty():
-            if preferences.violations(ev.get("send_player_ids", []),
-                                      ev.get("receive_player_ids", []),
-                                      names or {}):
+            # The hard constraint only. A package that merely fails to land a
+            # targeted player is still a legitimate pick; one that ships a
+            # withheld player never is.
+            if preferences.forbidden_sends(ev.get("send_player_ids", [])):
                 continue
         viable.append(ev)
     # Best gain first; break ties on fairness so the easier sell wins.

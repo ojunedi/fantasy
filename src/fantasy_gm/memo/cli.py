@@ -86,6 +86,10 @@ def _render_no_recommendation(record: DecisionRecord, rec: dict) -> None:
 
     print("\n  ⚠  AGENT ABSTAINED\n")
     print(f"  Memo: {record.memo}\n")
+    for pkg in rec.get("refused_trades", []):
+        send = ", ".join(pkg.get("send_names") or pkg.get("send_player_ids", []))
+        recv = ", ".join(pkg.get("receive_names") or pkg.get("receive_player_ids", []))
+        print(f"  ✗ REFUSED (not offered): {send}  ⇄  {recv}")
     missing = rec.get("missing_information", [])
     if missing:
         print("  Missing information:")
@@ -121,6 +125,11 @@ def _render_trade_packages(record: DecisionRecord) -> None:
         print(f"      pitch: {t.get('counterparty_pitch', '')}")
         for problem in t.get("directive_violations", []):
             print(f"      ⚠  against your brief: {problem}")
+    for pkg in rec.get("refused_trades", []):
+        send = ", ".join(pkg.get("send_names") or pkg.get("send_player_ids", []))
+        recv = ", ".join(pkg.get("receive_names") or pkg.get("receive_player_ids", []))
+        print(f"  ✗ REFUSED (not offered): {send}  ⇄  {recv}")
+        print(f"      {pkg.get('refused_because', '')}")
     if rec.get("what_would_change_this"):
         print(f"\n  What would change this: {rec['what_would_change_this']}")
 

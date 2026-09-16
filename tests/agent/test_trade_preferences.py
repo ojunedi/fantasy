@@ -187,3 +187,23 @@ def test_interview_parses_wanted_positions(monkeypatch, answer, expected):
 
     prefs = interview_trade_preferences(_Ctx(), interactive=True)
     assert prefs.want_positions == expected
+
+
+# ---- The offer list is a HARD constraint ---------------------------------
+
+def test_forbidden_sends_is_empty_when_unconstrained():
+    assert TradePreferences().forbidden_sends(["1", "2"]) == []
+
+
+def test_forbidden_sends_names_only_the_players_withheld():
+    p = TradePreferences(offerable_ids=["2", "3"])
+    assert p.forbidden_sends(["2", "3"]) == []
+    assert p.forbidden_sends(["1", "2", "4"]) == ["1", "4"]
+
+
+def test_a_missed_target_is_not_a_hard_block():
+    """Which of MY players may leave is the manager's call; which player comes
+    back is a preference the agent may miss and still be useful."""
+    p = TradePreferences(target_ids=["9"], offerable_ids=["2"])
+    assert p.forbidden_sends(["2"]) == []          # legal send
+    assert p.violations(["2"], ["7"]) != []        # ...but flagged as a miss

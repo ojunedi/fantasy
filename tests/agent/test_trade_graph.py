@@ -724,3 +724,97 @@ def test_scan_states_the_combined_offer_budget(valued_ctx):
     out, _ = ctx.dispatch("find_trade_targets", {"want_position": "RB"})
     assert "COMBINED value of everything I can offer: 3300" in out   # 2400 + 900
     assert "Package SEVERAL chips together" in out
+
+
+# ---- Withheld players cannot reach a proposal ----------------------------
+
+def _prefs_offering(*ids):
+    from fantasy_gm.agent.trade.preferences import TradePreferences
+    return TradePreferences(offerable_ids=list(ids))
+
+
+def test_evaluate_trade_refuses_to_price_a_withheld_player(valued_ctx):
+    """Blocked at pricing: a package never scored can never be proposed."""
+    ctx = valued_ctx
+    ctx.preferences = _prefs_offering("wr_spare")
+    out, _ = ctx.dispatch("evaluate_trade", {"send_player_ids": ["wr1"],
+                                             "receive_player_ids": ["rb_strong"],
+                                             "counterparty_team_id": "3"})
+    assert out.startswith("REJECTED")
+    assert "Pwr1" in out                 # names who was withheld
+    assert "Pwr_spare" in out            # and what IS allowed
+    assert ctx.evaluations == []         # not recorded, so not pickable
+
+
+def test_evaluate_trade_still_prices_an_offered_player(valued_ctx):
+    ctx = valued_ctx
+    ctx.preferences = _prefs_offering("wr_spare")
+    out, _ = ctx.dispatch("evaluate_trade", {"send_player_ids": ["wr_spare"],
+                                             "receive_player_ids": ["rb_strong"],
+                                             "counterparty_team_id": "3"})
+    assert "EV delta" in out
+    assert len(ctx.evaluations) == 1
+
+
+def test_propose_trades_drops_a_package_with_a_withheld_player(valued_ctx):
+    import json
+
+    ctx = valued_ctx
+    ctx.preferences = _prefs_offering("wr_spare")
+    out, _ = ctx.dispatch("propose_trades", {"trades": [
+        {"counterparty_team_id": "3", "send_player_ids": ["wr1"],
+         "receive_player_ids": ["rb_strong"], "rationale": "r",
+         "counterparty_pitch": "p", "confidence": 0.9},
+        {"counterparty_team_id": "3", "send_player_ids": ["wr_spare"],
+         "receive_player_ids": ["rb_strong"], "rationale": "r",
+         "counterparty_pitch": "p", "confidence": 0.7},
+    ], "memo": "m", "what_would_change_this": "w"})
+    result = json.loads(out)
+
+    assert len(result["trades"]) == 1
+    assert result["trades"][0]["send_player_ids"] == ["wr_spare"]
+    assert len(result["refused_trades"]) == 1
+    assert "did not offer" in result["refused_trades"][0]["refused_because"]
+
+
+class _ProposesWithheldPlayer:
+    """Prices a legal package, then proposes an illegal one anyway."""
+    def __init__(self):
+        self.calls = 0
+
+    def bind_tools(self, tools, **kwargs):
+        return self
+
+    def invoke(self, messages):
+        self.calls += 1
+        if self.calls == 1:
+            return AIMessage(content="", tool_calls=[{
+                "name": "evaluate_trade",
+                "args": {"send_player_ids": ["wr_spare"],
+                         "receive_player_ids": ["rb_strong"],
+                         "counterparty_team_id": "3"}, "id": "e1"}])
+        return AIMessage(content="", tool_calls=[{
+            "name": "propose_trades",
+            "args": {"trades": [{
+                "counterparty_team_id": "3",
+                "send_player_ids": ["wr1"],          # withheld
+                "receive_player_ids": ["rb_strong"],
+                "rationale": "r", "counterparty_pitch": "p", "confidence": 0.9}],
+                "memo": "m", "what_would_change_this": "w"}, "id": "p1"}])
+
+
+def test_an_all_refused_proposal_falls_back_to_a_legal_package(valued_ctx):
+    """Never show a 0%-confidence empty proposal — substitute a legal one."""
+    ctx = valued_ctx
+    ctx.preferences = _prefs_offering("wr_spare")
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    record = TradeGraphAgent(AgentConfig(max_llm_calls=4),
+                             llm=_ProposesWithheldPlayer(),
+                             checkpoint_path=tmp).decide(ctx, verbose=False)
+    rec = record.recommendation
+
+    assert rec["selected_deterministically"] is True
+    assert len(rec["refused_trades"]) == 1
+    # The substituted package only sends what was offered.
+    assert rec["trades"][0]["send_player_ids"] == ["wr_spare"]
+    assert record.confidence > 0

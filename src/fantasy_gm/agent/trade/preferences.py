@@ -33,6 +33,18 @@ class TradePreferences:
         return not (self.want_positions or self.offerable_ids
                     or self.target_ids or self.notes)
 
+    def forbidden_sends(self, send_ids: list[str]) -> list[str]:
+        """Players in `send_ids` the manager never put on the table.
+
+        Unlike `violations`, this is a HARD constraint. "Which of my players may
+        leave" is the manager's call alone, not a trade-off for the agent to
+        weigh: a package built on someone they refused is not a near-miss worth
+        showing, it is unusable. Everything else about a brief stays advisory.
+        """
+        if not self.offerable_ids:
+            return []
+        return [p for p in send_ids if p not in self.offerable_ids]
+
     def violations(self, send_ids: list[str], receive_ids: list[str],
                    names: dict[str, str] | None = None) -> list[str]:
         """Ways a proposed package contradicts what the manager asked for.
