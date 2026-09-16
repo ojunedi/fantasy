@@ -125,6 +125,44 @@ _TRANSIENT_MARKERS = ("503", "500", "502", "504", "unavailable",
                       "high demand", "overloaded", "internal error")
 
 
+def _bind_forced(llm: Any, tools: list) -> Any:
+    """Bind `tools` and require the model to call one of them.
+
+    Withdrawing the other tools is not enough on its own: offered only
+    `propose_trades`/`abstain`, Haiku still emitted `evaluate_trade` and
+    `get_usage_trends` — tool names it had used earlier in the conversation but
+    which were NOT in that request — and ToolNode executed them. `tool_choice`
+    is the provider-side guarantee that the reply is one of these tools.
+
+    Falls back to a plain binding when the provider or a test double does not
+    accept `tool_choice`, so this can never break a run.
+    """
+    try:
+        return llm.bind_tools(tools, tool_choice="any")
+    except Exception:
+        return llm.bind_tools(tools)
+
+
+def _strip_non_terminal(response: Any, terminal_tools: frozenset[str]) -> Any:
+    """Drop tool calls the final turn was not allowed to make.
+
+    A belt-and-braces guard behind `tool_choice`: ToolNode knows every tool, so
+    a stray call would otherwise execute and burn the reserved turn on analysis
+    the run has no budget left to use.
+    """
+    calls = getattr(response, "tool_calls", None)
+    if not calls:
+        return response
+    kept = [c for c in calls if c.get("name") in terminal_tools]
+    if len(kept) == len(calls):
+        return response
+    dropped = ", ".join(sorted({c.get("name", "?") for c in calls
+                                if c.get("name") not in terminal_tools}))
+    print(f"  dropped withdrawn tool call(s) on the final turn: {dropped}", flush=True)
+    response.tool_calls = kept
+    return response
+
+
 def _is_transient(exc: Exception) -> bool:
     """True for provider-side hiccups worth another (rate-limited) attempt.
 
@@ -199,7 +237,7 @@ class GraphAgent(ABC):
         # proposal. Removing the other tools makes that outcome unreachable
         # rather than merely discouraged.
         terminal_only = [t for t in tools if getattr(t, "name", None) in self.terminal_tools]
-        bound_terminal = llm.bind_tools(terminal_only) if terminal_only else bound
+        bound_terminal = _bind_forced(llm, terminal_only) if terminal_only else bound
 
         # Set when a turn comes back with no tool call at all, so the retry is
         # offered only the terminal tools.
@@ -252,6 +290,8 @@ class GraphAgent(ABC):
                         raise
                     print(f"  transient provider error, retrying "
                           f"({attempt + 1}/{attempts - 1}): {exc}", flush=True)
+            if final_turn:
+                response = _strip_non_terminal(response, self.terminal_tools)
             return {"messages": [response]}
 
         def route_after_agent(state: AgentState) -> str:

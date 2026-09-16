@@ -422,3 +422,87 @@ def test_an_empty_response_with_no_budget_left_still_terminates(ctx):
 
     assert model.calls == 4            # budget + the one reserved call, then stop
     assert record.recommendation["truncated"] is True
+
+
+# ---- The final turn is enforced, not just requested -----------------------
+
+def test_final_turn_requests_tool_choice_any(ctx):
+    """Withdrawing tools is not enough — the provider must be told to pick one."""
+    seen: list[dict] = []
+
+    class _Model:
+        def bind_tools(self, tools, **kwargs):
+            seen.append({"names": [t.name for t in tools], "kwargs": kwargs})
+            return self
+
+        def invoke(self, messages):
+            return AIMessage(content="", tool_calls=[
+                {"name": "abstain", "args": {"missing_information": ["x"],
+                                             "what_you_would_need": "y",
+                                             "memo": "z"}, "id": "t1"}])
+
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    LineupGraphAgent(AgentConfig(max_llm_calls=2), llm=_Model(),
+                     checkpoint_path=tmp).decide(ctx, verbose=False)
+
+    forced = [b for b in seen if b["kwargs"].get("tool_choice") == "any"]
+    assert forced, "the terminal binding did not force a tool choice"
+    assert all(n in {"propose_lineup", "abstain"} for n in forced[0]["names"])
+
+
+def test_binding_falls_back_when_tool_choice_is_unsupported(ctx):
+    """A provider or fake that rejects tool_choice must still work."""
+    class _Picky:
+        def __init__(self):
+            self.rejected = 0
+
+        def bind_tools(self, tools, **kwargs):
+            if kwargs:
+                self.rejected += 1
+                raise TypeError("unexpected keyword argument 'tool_choice'")
+            return self
+
+        def invoke(self, messages):
+            return AIMessage(content="", tool_calls=[
+                {"name": "abstain", "args": {"missing_information": ["x"],
+                                             "what_you_would_need": "y",
+                                             "memo": "z"}, "id": "t1"}])
+
+    model = _Picky()
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    record = LineupGraphAgent(AgentConfig(max_llm_calls=2), llm=model,
+                              checkpoint_path=tmp).decide(ctx, verbose=False)
+    assert model.rejected == 1
+    assert record.recommendation["abstained"] is True   # ran anyway
+
+
+def test_stray_tool_calls_are_dropped_on_the_final_turn(ctx, capsys):
+    """Haiku emitted withdrawn tool names live; ToolNode must not run them."""
+    class _Stray:
+        def __init__(self):
+            self.calls = 0
+
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def invoke(self, messages):
+            self.calls += 1
+            if self.calls == 1:      # burn the analysis budget
+                return AIMessage(content="", tool_calls=[
+                    {"name": "get_my_injury_summary", "args": {}, "id": "a"}])
+            # Final turn: a withdrawn tool alongside a legitimate terminal call.
+            return AIMessage(content="", tool_calls=[
+                {"name": "get_my_injury_summary", "args": {}, "id": "b"},
+                {"name": "abstain", "args": {"missing_information": ["x"],
+                                             "what_you_would_need": "y",
+                                             "memo": "z"}, "id": "c"}])
+
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    record = LineupGraphAgent(AgentConfig(max_llm_calls=2), llm=_Stray(),
+                              checkpoint_path=tmp).decide(ctx, verbose=False)
+
+    assert "dropped withdrawn tool call" in capsys.readouterr().out
+    # Only the terminal tool ran on the final turn.
+    final_tools = [c["tool"] for c in record.inputs_snapshot["tool_calls"]]
+    assert final_tools.count("get_my_injury_summary") == 1   # the first turn only
+    assert record.recommendation["abstained"] is True
