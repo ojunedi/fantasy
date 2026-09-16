@@ -659,3 +659,68 @@ def test_counterparty_stays_unset_when_it_cannot_be_derived(valued_ctx):
     ctx.dispatch("evaluate_trade", {"send_player_ids": ["wr_spare"],
                                     "receive_player_ids": ["rb_strong"]})
     assert ctx.evaluations[0]["counterparty_team_id"] is None
+
+
+# ---- Targets must include the counterparty's starters ---------------------
+
+def test_acquirable_includes_their_starters_not_just_their_bench(valued_ctx):
+    """Filtering targets to a team's spare depth makes an upgrade impossible —
+    their spare depth is by definition worse than their starters."""
+    ctx = valued_ctx
+    them = next(r for r in ctx.all_rosters() if r.team_id == "3")
+    got = ctx.acquirable(them, [Position.RB])
+    tiers = {rp.player.platform_id: tier for rp, _, tier in got}
+
+    # The slot is allocated by VALUE, not by ESPN's slot label: rb_strong2 (1200)
+    # outranks rb_strong (1150), so he is the one filling the lineup.
+    assert tiers["rb_strong2"] == "starter"    # in their lineup, still listed
+    assert tiers["rb_strong"] == "depth"       # spare
+    # The better player is surfaced first, which `trade_chips` could never do.
+    assert got[0][0].player.platform_id == "rb_strong2"
+
+
+def test_trade_chips_still_excludes_their_starters(valued_ctx):
+    """`acquirable` is for what I GET; `trade_chips` is for what a team can
+    spare. The second must keep excluding locked starters."""
+    ctx = valued_ctx
+    them = next(r for r in ctx.all_rosters() if r.team_id == "3")
+    chip_ids = {rp.player.platform_id for rp, _ in ctx.trade_chips(them)}
+    assert "rb_strong" in chip_ids             # spare depth
+    assert "rb_strong2" not in chip_ids        # fills their lineup
+
+
+def test_scan_lists_a_starter_as_acquirable(valued_ctx):
+    ctx = valued_ctx
+    out, _ = ctx.dispatch("find_trade_targets", {"want_position": "RB"})
+    assert "IN THEIR LINEUP" in out
+    assert "rb_strong2" in out
+
+
+# ---- An offered starter must not be filtered out -------------------------
+
+def test_a_starter_the_manager_offered_is_still_offerable(valued_ctx):
+    """Naming a player IS the authorisation to trade him. Intersecting the
+    offer with `trade_chips` silently dropped offered starters, understating
+    the budget and making every target look unaffordable."""
+    from fantasy_gm.agent.trade.preferences import TradePreferences
+
+    ctx = valued_ctx
+    # wr1 is a STARTER (value 2400); wr_spare is bench (900).
+    ctx.preferences = TradePreferences(want_positions=[Position.RB],
+                                       offerable_ids=["wr1", "wr_spare"])
+    out, _ = ctx.dispatch("find_trade_targets", {})
+    chips_line = next(ln for ln in out.splitlines() if "My best chips" in ln)
+    assert "Pwr1" in chips_line          # the offered starter survived
+    assert "Pwr_spare" in chips_line
+
+
+def test_scan_states_the_combined_offer_budget(valued_ctx):
+    """The agent judged targets against ONE chip and declared them
+    unaffordable; the combined total is what actually buys an upgrade."""
+    from fantasy_gm.agent.trade.preferences import TradePreferences
+
+    ctx = valued_ctx
+    ctx.preferences = TradePreferences(offerable_ids=["wr1", "wr_spare"])
+    out, _ = ctx.dispatch("find_trade_targets", {"want_position": "RB"})
+    assert "COMBINED value of everything I can offer: 3300" in out   # 2400 + 900
+    assert "Package SEVERAL chips together" in out

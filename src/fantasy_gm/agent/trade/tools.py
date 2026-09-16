@@ -270,15 +270,12 @@ class TradeToolContext(ToolContext):
                 baselines[pos] = vals[-1]
         return baselines
 
-    def trade_chips(self, roster: Roster) -> list[tuple]:
-        """Players beyond a team's actual starting allocation that still carry
-        market value — what that team can realistically trade away.
+    def _lineup_locked_ids(self, roster: Roster) -> tuple[set[str], dict]:
+        """(ids filling this team's starting allocation, players grouped by pos).
 
-        Distinct from `roster_needs`: a chip does NOT have to clear the league
-        replacement baseline. A backup QB or a WR4 is a real asset even though
-        he is not a startable-quality piece, and the surplus math hides him.
-
-        Returns [(RosterPlayer, AssetValue)] sorted by value, most valuable first.
+        Shared by `trade_chips` (what a team can spare) and `acquirable` (what a
+        team could be talked out of), so the two can never disagree about who
+        counts as a starter.
         """
         req = self._team_starter_requirements()
         elig = self._flex_eligible()
@@ -309,6 +306,55 @@ class TradeToolContext(ToolContext):
         flex_pool.sort(key=lambda rp: -val(rp))
         for rp in flex_pool[:self._flex_slots()]:
             locked.add(rp.player.platform_id)
+        return locked, by_pos
+
+    def acquirable(self, roster: Roster, positions, limit: int = 5) -> list[tuple]:
+        """Players on `roster` worth targeting, INCLUDING their starters.
+
+        `trade_chips` answers "what can this team spare", which is the right
+        question for what I give up but the wrong one for what I get: filtering
+        targets to a counterparty's spare depth makes an UPGRADE structurally
+        impossible, because a team's spare depth is by definition worse than
+        their starters. That is why a scan for WRs returned nothing but other
+        teams' bench.
+
+        A starter is not untouchable — consolidating several mid pieces into one
+        better player is the most common real trade there is, and the counterparty
+        refills the vacated slot from what they receive. Whether they would
+        actually say yes is already decided by `evaluate_trade`'s fairness, so
+        the willingness guess belongs there, not here.
+
+        Returns [(RosterPlayer, AssetValue, tier)] by value, where tier is
+        "depth" (spare, easy to get) or "starter" (needs replacing in the deal).
+        """
+        locked, by_pos = self._lineup_locked_ids(roster)
+        vm = self.value_map()
+        wanted = set(positions)
+        out = []
+        for pos, players in by_pos.items():
+            if pos not in wanted:
+                continue
+            for rp in players:
+                pid = rp.player.platform_id
+                av = vm.get(pid)
+                if av is None or av.value <= 0:
+                    continue
+                out.append((rp, av, "starter" if pid in locked else "depth"))
+        out.sort(key=lambda t: -t[1].value)
+        return out[:limit]
+
+    def trade_chips(self, roster: Roster) -> list[tuple]:
+        """Players beyond a team's actual starting allocation that still carry
+        market value — what that team can realistically trade away.
+
+        Distinct from `roster_needs`: a chip does NOT have to clear the league
+        replacement baseline. A backup QB or a WR4 is a real asset even though
+        he is not a startable-quality piece, and the surplus math hides him.
+
+        Returns [(RosterPlayer, AssetValue)] sorted by value, most valuable first.
+        """
+        vm = self.value_map()
+        locked, by_pos = self._lineup_locked_ids(roster)
 
         chips = [
             (rp, vm[rp.player.platform_id])
@@ -438,9 +484,19 @@ class TradeToolContext(ToolContext):
         # argument wins over both.
         pref_wants = list(getattr(prefs, "want_positions", []) or [])
         if getattr(prefs, "offerable_ids", None):
+            # Build from the roster, NOT by intersecting `trade_chips`: the
+            # manager naming a player IS the authorisation to trade him, so a
+            # starter he offered must not be filtered out for being a starter.
+            # Intersecting hid an offered 1,569-value starter and left the agent
+            # believing its whole budget was the 1,887 of spare bench pieces.
             allowed = set(prefs.offerable_ids)
-            my_chips = [(rp, av) for rp, av in my_chips
-                        if rp.player.platform_id in allowed]
+            vm = self.value_map()
+            my_chips = sorted(
+                ((rp, vm[rp.player.platform_id]) for rp in my_roster.players
+                 if rp.player.platform_id in allowed
+                 and rp.player.platform_id in vm),
+                key=lambda t: -t[1].value,
+            )
 
         want_positions = [Position(want)] if want else (pref_wants or [
             p for p, n in my_needs.items() if n["need"]])
@@ -467,8 +523,15 @@ class TradeToolContext(ToolContext):
                  f"I can offer from {[p.value for p in offer_positions]}{offer_note}."]
         if my_chips:
             top = ", ".join(f"{rp.player.name} ({rp.player.position.value} {av.value:.0f})"
-                            for rp, av in my_chips[:4])
+                            for rp, av in my_chips[:6])
             lines.append(f"  My best chips: {top}")
+            # State the combined total: the agent kept comparing ONE chip against
+            # a target and concluding nothing was affordable, when several chips
+            # together covered it. Consolidation is the whole point of depth.
+            budget = sum(av.value for _, av in my_chips)
+            lines.append(f"  COMBINED value of everything I can offer: {budget:.0f}. "
+                         "Package SEVERAL chips together to reach one better "
+                         "player — do not judge a target against a single chip.")
 
         # Targets the manager named explicitly — surfaced whatever position they
         # play, so a want-position filter cannot hide them.
@@ -492,21 +555,24 @@ class TradeToolContext(ToolContext):
             if r.team_id == self.team_id:
                 continue
             their_needs = self.roster_needs(r)
-            their_chips = self.trade_chips(r)
-            # What they could realistically give up at a position I want.
-            gettable = [(rp, av) for rp, av in their_chips
-                        if rp.player.position in want_positions][:3]
+            # Their STARTERS are listed too, not just their spare depth: an
+            # upgrade is impossible if the only players on offer are the ones a
+            # team had no use for. Fairness in `evaluate_trade` decides whether
+            # they would actually part with him.
+            gettable = self.acquirable(r, want_positions)
             # Where they are short and my depth is leverage.
             they_need = [p for p in offer_positions
                          if their_needs.get(p, {}).get("need")]
             if not gettable and not they_need:
                 continue
             lines.append(f"\n  Team {r.team_id} ({r.owner_name}):")
-            for rp, av in gettable:
-                slot = "starter" if rp.is_starter else "bench"
+            for rp, av, tier in gettable:
+                note = ("their depth — cheap to prise loose" if tier == "depth"
+                        else "IN THEIR LINEUP — costs more, and they must be able "
+                             "to refill the slot from what you send")
                 lines.append(f"    could acquire: {rp.player.name} "
-                             f"({rp.player.position.value}, {slot}) value {av.value:.0f} "
-                             f"[{rp.player.platform_id}]")
+                             f"({rp.player.position.value}) value {av.value:.0f} "
+                             f"[{rp.player.platform_id}] — {note}")
             if they_need:
                 lines.append(f"    they NEED {[p.value for p in they_need]} — "
                              f"my depth there is leverage")
