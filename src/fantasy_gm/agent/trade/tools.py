@@ -41,6 +41,12 @@ SCAN_POSITIONS = (Position.QB, Position.RB, Position.WR, Position.TE)
 # being reported the same as "my only QB is worthless".
 _NEED_RATIO = 0.6
 
+# Same reasoning one step milder for "thin". `best < bar` on its own flags a
+# position the moment it is one rank under the last league-wide starter, which
+# in a 1-QB league is true for over half the league by construction — pure
+# noise. A material gap is required before the label means anything.
+_THIN_RATIO = 0.85
+
 
 @dataclass
 class TradeToolContext(ToolContext):
@@ -336,13 +342,21 @@ class TradeToolContext(ToolContext):
             vals = sorted((vm[p.platform_id].value for p in players
                            if p.platform_id in vm), reverse=True)
             best = vals[0] if vals else 0.0
-            # A real need: too few bodies to fill the slots, or the best one is
-            # materially below startable. Merely sitting under the bar is "thin".
-            need = required > 0 and (len(vals) < required or best < bar * _NEED_RATIO)
-            thin = required > 0 and not need and best < bar
+            # Bodies available to fill the slots, independent of quality. This is
+            # the difference between "I have no QB" and "my QB is mediocre", and
+            # conflating them is what produced the phantom QB crisis: `startable`
+            # counts players clearing the LAST LEAGUE-WIDE STARTER's value, so in
+            # a 1-QB league only 12 of ~19 rostered QBs can ever clear it and the
+            # other teams reported "0 startable" while starting a QB every week.
+            unfilled = max(0, required - len(players))
+            # A real need: an actually empty slot, or the best body materially
+            # below startable. Merely sitting under the bar is "thin".
+            need = required > 0 and (unfilled > 0 or best < bar * _NEED_RATIO)
+            thin = required > 0 and not need and best < bar * _THIN_RATIO
             needs[pos] = {"count": len(players), "startable": startable,
                           "required": required, "surplus": startable - required,
-                          "best": best, "need": need, "thin": thin}
+                          "filled": min(len(players), required), "unfilled": unfilled,
+                          "best": best, "bar": bar, "need": need, "thin": thin}
         return needs
 
     # ---- tools ---------------------------------------------------------
@@ -370,7 +384,14 @@ class TradeToolContext(ToolContext):
         return "\n".join(lines)
 
     def _tool_get_roster_needs(self, _: dict) -> str:
-        lines = ["Roster needs / surplus per team (startable depth vs. requirement):"]
+        lines = [
+            "Roster needs / surplus per team.",
+            "READ THIS CAREFULLY: 'filled' counts bodies against required starter "
+            "slots. 1/1 filled means the slot IS covered every week — that is NOT "
+            "a hole and NOT a crisis, however low the value. 'thin' means the "
+            "starter is below league-average quality: an UPGRADE opportunity, not "
+            "a shortage. Only NEED means the position actually needs addressing.",
+        ]
         for r in self.all_rosters():
             tag = " (ME)" if r.team_id == self.team_id else ""
             needs = self.roster_needs(r)
@@ -384,7 +405,10 @@ class TradeToolContext(ToolContext):
                     flag = "SURPLUS"
                 else:
                     flag = "ok"
-                parts.append(f"{pos.value}:{n['startable']}startable/{n['required']}req({flag})")
+                # Bodies-vs-slots first, then quality. Leading with the old
+                # "0startable/1req" read as an empty slot to the model.
+                parts.append(f"{pos.value}:{n['filled']}/{n['required']}filled"
+                             f",best{n['best']:.0f}vs{n['bar']:.0f}bar({flag})")
             lines.append(f"  Team {r.team_id}{tag} {r.owner_name}: " + " ".join(parts))
 
         mine = self.trade_chips(self.roster())

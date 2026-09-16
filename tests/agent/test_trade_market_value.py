@@ -204,3 +204,90 @@ def test_trade_chips_includes_bench_and_respects_flex():
     # q1 locked at QB; w1/w2 locked at WR; w3 takes the flex slot as the best
     # remaining flex-eligible player. What's left is genuinely tradeable.
     assert chips == ["q2", "w4"]
+
+
+def _one_qb_league(team_count: int = 2):
+    slots = [
+        RosterSlot(slot_id="qb", position=Position.QB, is_starter=True),
+        RosterSlot(slot_id="be0", position=Position.BENCH, is_starter=False),
+    ]
+    return LeagueSettings(
+        platform=Platform.ESPN, league_id="t", season=2026, team_count=team_count,
+        roster_slots=slots, scoring_rules=ScoringRules(rules=[]),
+        waiver_type=WaiverType.SNAKE, faab_budget=None,
+        playoff_start_week=15, playoff_weeks=[15, 16, 17],
+        regular_season_weeks=list(range(1, 15)),
+    )
+
+
+def _qb_ctx(roster_pids, market_values):
+    """A 1-QB league context whose roster holds `roster_pids`."""
+    from fantasy_gm.models import Player, PlayerStatus, Roster, RosterPlayer
+
+    market = {p: MarketValue(value=v, position="QB", position_rank=i + 1,
+                             overall_rank=i + 1)
+              for i, (p, v) in enumerate(market_values)}
+    ctx = TradeToolContext(adapter=None, settings=_one_qb_league(), team_id="8",
+                           week=1, season=2026, market_fn=lambda **k: market)
+    ctx._player_index = {p: {"position": Position.QB, "name": p, "team": "X"}
+                         for p in market}
+    ctx._weekly_proj = {p: 10.0 for p in market}
+    players = [
+        RosterPlayer(player=Player(platform_id=p, name=p, position=Position.QB,
+                                   eligible_positions=[Position.QB],
+                                   status=PlayerStatus.ACTIVE),
+                     slot=Position.QB if i == 0 else Position.BENCH,
+                     is_starter=(i == 0))
+        for i, p in enumerate(roster_pids)
+    ]
+    ctx._roster = Roster(team_id="8", team_name="T", owner_name="Me", week=1,
+                         season=2026, players=players)
+    return ctx
+
+
+_QB_POOL = [("a", 1000), ("b", 600), ("d", 450), ("c", 200)]
+
+
+def test_a_covered_slot_is_never_reported_as_unfilled():
+    """The phantom QB crisis: `startable` counts players clearing the LAST
+    LEAGUE-WIDE STARTER's value, so most of the league scores 0 there while
+    starting a QB every week. `filled` must tell the truth."""
+    n = _qb_ctx(["d"], _QB_POOL).roster_needs(_qb_ctx(["d"], _QB_POOL)._roster)[Position.QB]
+    assert n["startable"] == 0        # below the bar, as before
+    assert n["filled"] == 1           # but the slot IS covered
+    assert n["unfilled"] == 0
+    assert n["need"] is False
+
+
+def test_an_actually_empty_slot_is_a_need():
+    ctx = _qb_ctx([], _QB_POOL)
+    n = ctx.roster_needs(ctx._roster)[Position.QB]
+    assert n["filled"] == 0 and n["unfilled"] == 1
+    assert n["need"] is True
+
+
+def test_just_under_the_bar_is_not_even_thin():
+    """`best < bar` alone flags over half a 1-QB league by construction."""
+    pool = [("a", 1000), ("b", 600), ("e", 580)]
+    ctx = _qb_ctx(["e"], pool)
+    n = ctx.roster_needs(ctx._roster)[Position.QB]
+    assert n["best"] < n["bar"]        # genuinely below the last starter
+    assert n["thin"] is False          # ...but not by a material margin
+    assert n["need"] is False
+
+
+def test_materially_below_the_bar_is_thin():
+    ctx = _qb_ctx(["d"], _QB_POOL)
+    n = ctx.roster_needs(ctx._roster)[Position.QB]
+    assert n["thin"] is True and n["need"] is False
+
+
+def test_needs_output_leads_with_bodies_not_quality():
+    """The model read '0startable/1req' as an empty slot and called it a crisis."""
+    ctx = _qb_ctx(["d"], _QB_POOL)
+    ctx._all_rosters = [ctx._roster]
+    out, _ = ctx.dispatch("get_roster_needs", {})
+    assert "0startable" not in out
+    assert "1/1filled" in out
+    assert "NOT a hole" in out          # the guidance the model needs
+    assert "NEED" not in out.split("READ THIS CAREFULLY")[1].split("\n  Team")[1]

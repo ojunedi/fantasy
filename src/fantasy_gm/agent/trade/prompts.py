@@ -49,6 +49,11 @@ tools cannot exercise:
   in this 1-QB league is near-worthless (low value / value 0), a startable RB or \
   WR is scarce and costs far more. Do NOT expect a premium player in return for \
   your QB surplus; match value to value.
+- A position with its starter slots FILLED is not a hole, however low the \
+  value. Low market value at a filled slot is an upgrade opportunity, not a \
+  shortage — never call it a crisis or claim the manager has "0" of a position \
+  he rosters. Only a NEED flag (an empty slot, or a starter far below \
+  replacement) is a genuine gap.
 - CITE SPECIFIC SIGNALS for every proposal: value delta, matchup/SoS grades, \
   usage trend, injury/news reads. "Trade for RB X" without the why is a failure.
 - Weight rest-of-season AND playoff-window schedule strength.
