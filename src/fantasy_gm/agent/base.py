@@ -198,18 +198,30 @@ class GraphAgent(ABC):
         system_prompt = self.system_prompt
         terminal = ", ".join(sorted(self.terminal_tools))
 
+        # On the final turn the model is offered ONLY the terminal tools, so it
+        # cannot spend its last call on more analysis. The prompt directive alone
+        # was not enough — Haiku read "this is your FINAL turn" and called
+        # evaluate_trade anyway, ending the run with 20 priced packages and no
+        # proposal. Removing the other tools makes that outcome unreachable
+        # rather than merely discouraged.
+        terminal_only = [t for t in tools if getattr(t, "name", None) in self.terminal_tools]
+        bound_terminal = llm.bind_tools(terminal_only) if terminal_only else bound
+
         def agent_node(state: AgentState) -> dict:
             # Exactly one system message, always. Anthropic exposes a single
             # top-level `system` field and rejects non-consecutive system
             # messages, so the final-turn directive is folded in here rather
             # than appended as a second one.
             system_text = system_prompt
-            if ctx.llm_calls >= ctx.llm_budget - 1:
+            final_turn = ctx.llm_calls >= ctx.llm_budget - 1
+            if final_turn:
                 system_text += (
                     "\n\n## LLM CALL BUDGET REACHED — this is your FINAL turn.\n"
-                    "Do NOT request any more read/compute tools. Using only what you "
-                    f"have already gathered, call exactly one terminal tool now "
-                    f"({terminal}); if the data is insufficient, call abstain.")
+                    "The analysis tools have been WITHDRAWN; only the terminal tools "
+                    f"remain ({terminal}). Using only what you have already gathered, "
+                    "call exactly one of them now; if the data is insufficient, call "
+                    "abstain.")
+            model = bound_terminal if final_turn else bound
             prompt = [SystemMessage(content=system_text)] + state["messages"]
             # Retry transient provider errors here rather than in the client, so
             # each attempt passes through the shared rate limiter and stays
@@ -217,7 +229,7 @@ class GraphAgent(ABC):
             attempts = max(0, self.config.transient_retries) + 1
             for attempt in range(attempts):
                 try:
-                    response = bound.invoke(prompt)
+                    response = model.invoke(prompt)
                     ctx.record_llm_call()
                     break
                 except Exception as exc:

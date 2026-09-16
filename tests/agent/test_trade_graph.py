@@ -393,3 +393,64 @@ def test_renderer_distinguishes_truncation_from_abstention(capsys):
     out = capsys.readouterr().out
     assert "AGENT ABSTAINED" in out and "TRUNCATED" not in out
     assert "no fits" in out
+
+
+class _GreedyModel:
+    """Evaluates trades forever, but proposes once only terminal tools remain.
+
+    Mirrors the live failure: the model ignored the "final turn" wording and
+    kept analysing. Withdrawing the analysis tools is what forces it to land.
+    """
+    def __init__(self):
+        self.calls = 0
+
+    def bind_tools(self, tools):
+        names = {t.name for t in tools}
+        return _GreedyBound(self, names)
+
+    def evaluate(self):
+        self.calls += 1
+        return AIMessage(content="", tool_calls=[{
+            "name": "evaluate_trade",
+            "args": {"send_player_ids": ["wr_spare"],
+                     "receive_player_ids": ["rb_strong"],
+                     "counterparty_team_id": "3"},
+            "id": f"t{self.calls}"}])
+
+    def propose(self):
+        self.calls += 1
+        return AIMessage(content="Landing it.", tool_calls=[{
+            "name": "propose_trades",
+            "args": {"trades": [{
+                "counterparty_team_id": "3",
+                "send_player_ids": ["wr_spare"],
+                "receive_player_ids": ["rb_strong"],
+                "rationale": "Turns surplus WR depth into a scarce starting RB.",
+                "counterparty_pitch": "They are RB-rich and start only one real WR.",
+                "confidence": 0.7}],
+                "memo": "Consolidate WR depth into RB1.",
+                "what_would_change_this": "An injury to rb_strong."},
+            "id": f"t{self.calls}"}])
+
+
+class _GreedyBound:
+    def __init__(self, parent, names):
+        self.parent = parent
+        self.names = names
+
+    def invoke(self, messages):
+        if "evaluate_trade" in self.names:
+            return self.parent.evaluate()
+        return self.parent.propose()
+
+
+def test_restriction_forces_a_proposal_instead_of_a_truncated_run(ctx):
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    agent = TradeGraphAgent(AgentConfig(max_llm_calls=3), llm=_GreedyModel(),
+                            checkpoint_path=tmp)
+    record = agent.decide(ctx, verbose=False)
+
+    assert not record.recommendation.get("truncated")
+    assert not record.recommendation.get("abstained")
+    assert record.recommendation["trades"][0]["receive_player_ids"] == ["rb_strong"]
+    assert record.confidence == 0.7

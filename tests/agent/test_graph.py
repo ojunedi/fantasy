@@ -276,3 +276,83 @@ def test_llm_call_budget_caps_the_loop(ctx):
     assert model.calls == 3            # capped — did not loop until recursion limit
     assert ctx.llm_calls == 3
     assert record.recommendation.get("abstained")  # no terminal tool → abstain fallback
+
+
+# ---- Final-turn tool restriction ------------------------------------------
+
+class _BoundModel:
+    """One binding of the recorder — remembers which tools it was given."""
+    def __init__(self, parent, names):
+        self.parent = parent
+        self.names = names
+
+    def invoke(self, messages):
+        self.parent.offered.append(self.names)
+        return self.parent.next_message()
+
+
+class _BindRecorder:
+    """Records the tool names offered at each turn; always asks for a read tool."""
+    def __init__(self):
+        self.offered: list[list[str]] = []
+        self.calls = 0
+
+    def bind_tools(self, tools):
+        return _BoundModel(self, [t.name for t in tools])
+
+    def next_message(self):
+        self.calls += 1
+        return AIMessage(content="", tool_calls=[
+            {"name": "get_my_injury_summary", "args": {}, "id": f"t{self.calls}"}])
+
+
+def test_final_turn_offers_only_terminal_tools(ctx):
+    """The model must not be able to spend its last call on more analysis."""
+    model = _BindRecorder()
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    agent = LineupGraphAgent(AgentConfig(max_llm_calls=2), llm=model, checkpoint_path=tmp)
+    agent.decide(ctx, verbose=False)
+
+    assert len(model.offered) == 2
+    first, final = model.offered
+    # Turn 1 has the full toolset; the final turn has only the terminal tools.
+    assert "get_my_injury_summary" in first
+    assert "get_my_injury_summary" not in final
+    assert set(final) == set(agent.terminal_tools)
+
+
+def test_non_final_turns_keep_the_full_toolset(ctx):
+    """A generous budget must not restrict the early turns."""
+    model = _BindRecorder()
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    agent = LineupGraphAgent(AgentConfig(max_llm_calls=4), llm=model, checkpoint_path=tmp)
+    agent.decide(ctx, verbose=False)
+
+    assert [("get_my_injury_summary" in names) for names in model.offered] == \
+        [True, True, True, False]      # only the last turn is restricted
+
+
+def test_final_turn_directive_says_tools_were_withdrawn(ctx):
+    """The prompt must match reality, or the model reports a broken tool call."""
+    from langchain_core.messages import SystemMessage
+
+    seen: list[str] = []
+
+    class _Recorder(_BindRecorder):
+        def bind_tools(self, tools):
+            outer = self
+
+            class _B(_BoundModel):
+                def invoke(self, messages):
+                    seen.append(next(m.content for m in messages
+                                     if isinstance(m, SystemMessage)))
+                    return outer.next_message()
+            return _B(self, [t.name for t in tools])
+
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    agent = LineupGraphAgent(AgentConfig(max_llm_calls=2), llm=_Recorder(),
+                             checkpoint_path=tmp)
+    agent.decide(ctx, verbose=False)
+
+    assert "WITHDRAWN" not in seen[0]
+    assert "WITHDRAWN" in seen[-1]
