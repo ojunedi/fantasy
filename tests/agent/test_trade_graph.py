@@ -337,7 +337,8 @@ def test_budget_exhaustion_is_reported_as_truncated_not_abstained(ctx):
     rec = record.recommendation
     assert rec["truncated"] is True
     assert "budget exhausted" in rec["reason"]
-    assert rec["llm_calls"] == rec["llm_budget"] == 2
+    # Budget 2 of analysis, plus the one reserved call spent asking for a decision.
+    assert rec["llm_budget"] == 2 and rec["llm_calls"] == 3
     assert "cut off" in record.memo
     # Still flagged abstained so executors refuse to act on a truncated run.
     assert rec["abstained"] is True
@@ -454,3 +455,52 @@ def test_restriction_forces_a_proposal_instead_of_a_truncated_run(ctx):
     assert not record.recommendation.get("abstained")
     assert record.recommendation["trades"][0]["receive_player_ids"] == ["rb_strong"]
     assert record.confidence == 0.7
+
+
+class _NewsThenPropose:
+    """Burns budget on an LLM sub-agent tool, then proposes when forced."""
+    def __init__(self):
+        self.calls = 0
+
+    def bind_tools(self, tools):
+        outer = self
+        names = {t.name for t in tools}
+
+        class _B:
+            def invoke(self, messages):
+                outer.calls += 1
+                if "get_player_news" in names:
+                    return AIMessage(content="", tool_calls=[{
+                        "name": "get_player_news",
+                        "args": {"player_ids": ["rb_strong", "wr3"]},
+                        "id": f"n{outer.calls}"}])
+                return AIMessage(content="", tool_calls=[{
+                    "name": "propose_trades",
+                    "args": {"trades": [{
+                        "counterparty_team_id": "3",
+                        "send_player_ids": ["wr_spare"],
+                        "receive_player_ids": ["rb_strong"],
+                        "rationale": "Converts spare WR depth into a starting RB.",
+                        "counterparty_pitch": "They are deep at RB and thin at WR.",
+                        "confidence": 0.6}],
+                        "memo": "Land the RB.",
+                        "what_would_change_this": "An injury."},
+                    "id": f"p{outer.calls}"}])
+        return _B()
+
+
+def test_subagent_overshoot_still_leaves_a_turn_to_decide(ctx):
+    """Sub-agent tools drain the SAME budget and can blow past it in one step.
+
+    That used to end the run without ever asking for a recommendation. The
+    reserved call must guarantee a terminal turn regardless.
+    """
+    ctx.news_fn = lambda names: {n: {"net_outlook": "up", "note": "Hot."} for n in names}
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    agent = TradeGraphAgent(AgentConfig(max_llm_calls=2), llm=_NewsThenPropose(),
+                            checkpoint_path=tmp)
+    record = agent.decide(ctx, verbose=False)
+
+    assert ctx.llm_calls > ctx.llm_budget          # the overshoot really happened
+    assert not record.recommendation.get("truncated")
+    assert record.recommendation["trades"][0]["receive_player_ids"] == ["rb_strong"]

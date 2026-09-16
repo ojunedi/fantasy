@@ -204,6 +204,22 @@ class GraphAgent(ABC):
         # Set when a turn comes back with no tool call at all, so the retry is
         # offered only the terminal tools.
         force_terminal = False
+        # `max_llm_calls` budgets ANALYSIS. One further call is held in reserve
+        # purely to submit a decision, because the budget can be overshot inside
+        # a single tools step: LLM sub-agents (injury/news) draw from the same
+        # counter, so a tools step could jump it straight past the limit and the
+        # run would end having never been asked for a recommendation. The reserve
+        # guarantees every run gets exactly one terminal-tool turn.
+        reserve_used = False
+
+        def claim_reserve() -> bool:
+            """Take the reserved terminal call, if it has not been used yet."""
+            nonlocal reserve_used, force_terminal
+            if reserve_used:
+                return False
+            reserve_used = True
+            force_terminal = True
+            return True
 
         def agent_node(state: AgentState) -> dict:
             # Exactly one system message, always. Anthropic exposes a single
@@ -251,7 +267,7 @@ class GraphAgent(ABC):
             if ctx.llm_calls < ctx.llm_budget:
                 force_terminal = True
                 return "agent"
-            return END
+            return "agent" if claim_reserve() else END
 
         def route_after_tools(state: AgentState) -> str:
             for msg in reversed(state["messages"]):
@@ -260,9 +276,10 @@ class GraphAgent(ABC):
                         return END
                 else:
                     break
-            # Stop looping once the shared LLM budget is spent.
+            # The analysis budget is spent — spend the reserved call asking for
+            # a decision rather than ending with nothing.
             if ctx.llm_calls >= ctx.llm_budget:
-                return END
+                return "agent" if claim_reserve() else END
             return "agent"
 
         graph = StateGraph(AgentState)

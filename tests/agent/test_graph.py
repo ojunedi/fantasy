@@ -273,9 +273,11 @@ def test_llm_call_budget_caps_the_loop(ctx):
     agent = LineupGraphAgent(AgentConfig(max_llm_calls=3), llm=model, checkpoint_path=tmp)
     record = agent.decide(ctx, verbose=False)
 
-    assert model.calls == 3            # capped — did not loop until recursion limit
-    assert ctx.llm_calls == 3
-    assert record.recommendation.get("abstained")  # no terminal tool → abstain fallback
+    # Capped at the analysis budget plus the single reserved terminal call —
+    # bounded, and nowhere near the recursion limit.
+    assert model.calls == 4
+    assert ctx.llm_calls == 4
+    assert record.recommendation.get("abstained")  # no terminal tool → fallback
 
 
 # ---- Final-turn tool restriction ------------------------------------------
@@ -313,12 +315,11 @@ def test_final_turn_offers_only_terminal_tools(ctx):
     agent = LineupGraphAgent(AgentConfig(max_llm_calls=2), llm=model, checkpoint_path=tmp)
     agent.decide(ctx, verbose=False)
 
-    assert len(model.offered) == 2
-    first, final = model.offered
-    # Turn 1 has the full toolset; the final turn has only the terminal tools.
-    assert "get_my_injury_summary" in first
-    assert "get_my_injury_summary" not in final
-    assert set(final) == set(agent.terminal_tools)
+    # Turn 1 has the full toolset; the run's last turn has only terminal tools.
+    assert "get_my_injury_summary" in model.offered[0]
+    assert set(model.offered[-1]) == set(agent.terminal_tools)
+    # The analysis tools are never offered again once the budget is reached.
+    assert all("get_my_injury_summary" not in names for names in model.offered[1:])
 
 
 def test_non_final_turns_keep_the_full_toolset(ctx):
@@ -328,8 +329,11 @@ def test_non_final_turns_keep_the_full_toolset(ctx):
     agent = LineupGraphAgent(AgentConfig(max_llm_calls=4), llm=model, checkpoint_path=tmp)
     agent.decide(ctx, verbose=False)
 
-    assert [("get_my_injury_summary" in names) for names in model.offered] == \
-        [True, True, True, False]      # only the last turn is restricted
+    full = [("get_my_injury_summary" in names) for names in model.offered]
+    # The early turns keep everything; once restricted, it never reverts.
+    assert full[0] is True and full[-1] is False
+    assert full == sorted(full, reverse=True)
+    assert full.count(True) == 3       # budget-1 turns of unrestricted analysis
 
 
 def test_final_turn_directive_says_tools_were_withdrawn(ctx):
@@ -416,5 +420,5 @@ def test_an_empty_response_with_no_budget_left_still_terminates(ctx):
     agent = LineupGraphAgent(AgentConfig(max_llm_calls=3), llm=model, checkpoint_path=tmp)
     record = agent.decide(ctx, verbose=False)
 
-    assert model.calls == 3                          # bounded by the budget
+    assert model.calls == 4            # budget + the one reserved call, then stop
     assert record.recommendation["truncated"] is True
