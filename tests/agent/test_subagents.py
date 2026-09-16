@@ -2,7 +2,7 @@
 from langchain_core.messages import AIMessage
 
 from fantasy_gm.agent.subagents.base import parse_json_object
-from fantasy_gm.agent.subagents.injury import interpret_injury
+from fantasy_gm.agent.subagents.injury import interpret_injuries, interpret_injury
 from fantasy_gm.agent.subagents.news import interpret_news, interpret_news_batch
 
 
@@ -147,3 +147,70 @@ def test_batch_deduplicates_and_ignores_blanks():
     llm = CountingLLM('{"players": {}}')
     out = interpret_news_batch(["RB Y", "RB Y", ""], llm=llm, news_text="news")
     assert list(out) == ["RB Y"]
+
+
+# ---- Batched injuries ----------------------------------------------------
+
+_INJ_REPLY = ('{"players": {'
+              '"RB A": {"availability_pct": 0, "role_change_flag": false, "note": "Out."},'
+              '"RB B": {"availability_pct": 95, "role_change_flag": true, "note": "Inherits work."}'
+              '}}')
+
+
+def _inj(name, status="QUESTIONABLE", **kw):
+    return {"player_name": name, "status": status, **kw}
+
+
+def test_injuries_batch_uses_one_call_for_many_players():
+    llm = CountingLLM(_INJ_REPLY)
+    out = interpret_injuries([_inj("RB A", "OUT"), _inj("RB B", "ACTIVE")], llm=llm)
+    assert llm.calls == 1
+    assert out["RB A"]["availability_pct"] == 0
+    # The teammate read that per-player calls structurally cannot make.
+    assert out["RB B"]["role_change_flag"] is True
+
+
+def test_injuries_batch_preserves_each_raw_status():
+    llm = CountingLLM(_INJ_REPLY)
+    out = interpret_injuries([_inj("RB A", "OUT"), _inj("RB B", "ACTIVE")], llm=llm)
+    assert out["RB A"]["raw_status"] == "OUT"
+    assert out["RB B"]["raw_status"] == "ACTIVE"
+
+
+def test_injuries_batch_degrades_only_the_missing_player():
+    llm = CountingLLM(_INJ_REPLY)
+    out = interpret_injuries([_inj("RB A", "OUT"), _inj("Ghost", "DOUBTFUL")], llm=llm)
+    assert out["RB A"]["availability_pct"] == 0          # survived
+    assert out["Ghost"]["availability_pct"] is None      # degraded alone
+    assert out["Ghost"]["raw_status"] == "DOUBTFUL"
+
+
+def test_injuries_batch_sends_only_the_fields_we_have():
+    """Absent practice/snap data must not appear as 'None' in the prompt."""
+    llm = CountingLLM(_INJ_REPLY)
+    interpret_injuries([_inj("RB A", "OUT")], llm=llm)
+    assert "None" not in llm.prompts[0]
+    llm2 = CountingLLM(_INJ_REPLY)
+    interpret_injuries([_inj("RB A", "OUT", snap_share_last3=0.62)], llm=llm2)
+    assert "62%" in llm2.prompts[0]
+
+
+def test_injuries_batch_chunks_past_the_size_cap():
+    from fantasy_gm.agent.subagents import injury as injury_mod
+    players = [_inj(f"P{i}") for i in range(injury_mod._BATCH_SIZE + 1)]
+    llm = CountingLLM('{"players": {}}')
+    out = interpret_injuries(players, llm=llm)
+    assert llm.calls == 2
+    assert len(out) == injury_mod._BATCH_SIZE + 1
+
+
+def test_injuries_batch_degrades_every_player_on_error():
+    out = interpret_injuries([_inj("RB A"), _inj("RB B")], llm=RaisingLLM())
+    assert set(out) == {"RB A", "RB B"}
+    assert all("error" in v["note"].lower() for v in out.values())
+
+
+def test_injuries_batch_deduplicates_by_name():
+    llm = CountingLLM(_INJ_REPLY)
+    out = interpret_injuries([_inj("RB A"), _inj("RB A")], llm=llm)
+    assert list(out) == ["RB A"]
