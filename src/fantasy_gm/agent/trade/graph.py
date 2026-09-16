@@ -63,6 +63,27 @@ def _prior_proposals_block(week: int, season: int) -> str:
         return ""
 
 
+def _evaluated_packages(call_log: list[dict]) -> list[dict]:
+    """Packages the run already priced, salvaged from the tool log.
+
+    A truncated run has usually done the expensive part — scoring candidate
+    trades — before it died. Surfacing those lets the human see (and act on)
+    work that was previously discarded with the record.
+    """
+    packages = []
+    for call in call_log:
+        if call.get("tool") != "evaluate_trade":
+            continue
+        args = call.get("input") or {}
+        packages.append({
+            "send_player_ids": args.get("send_player_ids", []),
+            "receive_player_ids": args.get("receive_player_ids", []),
+            "counterparty_team_id": args.get("counterparty_team_id"),
+            "evaluation": call.get("output", ""),
+        })
+    return packages
+
+
 class TradeGraphAgent(GraphAgent):
     system_prompt = TRADE_SYSTEM_PROMPT
     terminal_tools = frozenset(TERMINAL_TOOLS)
@@ -140,13 +161,30 @@ class TradeGraphAgent(GraphAgent):
             memo = terminal_result.get("memo", "Abstained.")
             confidence = 0.0
         else:
+            # The loop ended WITHOUT a terminal tool. This is a truncated run, not
+            # an abstention: an abstain is a judgment the model made, whereas this
+            # is the run being cut off mid-analysis. Labelling it "ABSTAINED" hid
+            # real work — runs died holding a +997-value package they never got to
+            # propose. `abstained` stays set so downstream executors still refuse
+            # to act, but `truncated` tells the human what actually happened.
             text = "\n".join(
                 m.content for m in messages
                 if isinstance(m, AIMessage) and isinstance(m.content, str)
             )
-            recommendation = {"abstained": True, "reason": "no terminal tool called",
-                              "agent_text": text}
-            memo = "Agent did not reach a recommendation."
+            out_of_budget = ctx.llm_calls >= ctx.llm_budget
+            recommendation = {
+                "abstained": True,
+                "truncated": True,
+                "reason": ("LLM call budget exhausted before a terminal tool"
+                           if out_of_budget else "no terminal tool called"),
+                "llm_calls": ctx.llm_calls,
+                "llm_budget": ctx.llm_budget,
+                "evaluated_packages": _evaluated_packages(ctx.call_log),
+                "agent_text": text,
+            }
+            memo = ("Run was cut off before a recommendation — "
+                    + ("the LLM call budget ran out mid-analysis."
+                       if out_of_budget else "the agent stopped without proposing."))
             confidence = 0.0
 
         return DecisionRecord(

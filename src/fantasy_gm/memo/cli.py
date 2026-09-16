@@ -58,15 +58,47 @@ def _execute_approved_lineup(
         print("  Falling back to manual — set this lineup in the ESPN app yourself.")
 
 
+def _render_no_recommendation(record: DecisionRecord, rec: dict) -> None:
+    """Explain why no recommendation came back.
+
+    A deliberate `abstain` and a run that was cut off are different failures and
+    must not read the same: the first is the model's judgment, the second is a
+    truncated run that may be sitting on usable analysis.
+    """
+    if rec.get("truncated"):
+        print("\n  ⚠  RUN TRUNCATED — no recommendation reached\n")
+        print(f"  {record.memo}")
+        if rec.get("llm_budget"):
+            print(f"  LLM calls used: {rec.get('llm_calls')} of {rec.get('llm_budget')}"
+                  " (raise FANTASY_GM_MAX_LLM_CALLS to give the run more room)")
+        packages = rec.get("evaluated_packages") or []
+        if packages:
+            print(f"\n  Packages already evaluated before the cut-off ({len(packages)}) —"
+                  " NOT vetted recommendations:")
+            for pkg in packages:
+                print(f"    · {', '.join(pkg['send_player_ids'])}"
+                      f"  ⇄  {', '.join(pkg['receive_player_ids'])}")
+                for line in str(pkg.get("evaluation", "")).splitlines():
+                    if line.strip():
+                        print(f"        {line.strip()}")
+        print()
+        return
+
+    print("\n  ⚠  AGENT ABSTAINED\n")
+    print(f"  Memo: {record.memo}\n")
+    missing = rec.get("missing_information", [])
+    if missing:
+        print("  Missing information:")
+    for m in missing:
+        print(f"    - {m}")
+    if rec.get("what_you_would_need"):
+        print(f"\n  Would need: {rec['what_you_would_need']}")
+
+
 def _render_trade_packages(record: DecisionRecord) -> None:
     rec = record.recommendation
     if rec.get("abstained"):
-        print("\n  ⚠  AGENT ABSTAINED\n")
-        print(f"  Memo: {record.memo}\n")
-        for m in rec.get("missing_information", []):
-            print(f"    - {m}")
-        if rec.get("what_you_would_need"):
-            print(f"\n  Would need: {rec['what_you_would_need']}")
+        _render_no_recommendation(record, rec)
         return
     print(f"\n  Confidence: {record.confidence:.0%}\n")
     print(f"  Memo:\n  {record.memo}\n")
@@ -151,15 +183,7 @@ def present_and_approve(
 
     rec = record.recommendation
     if rec.get("abstained"):
-        print("\n  ⚠  AGENT ABSTAINED\n")
-        print(f"  Memo: {record.memo}\n")
-        missing = rec.get("missing_information", [])
-        if missing:
-            print("  Missing information:")
-            for m in missing:
-                print(f"    - {m}")
-        if rec.get("what_you_would_need"):
-            print(f"\n  Would need: {rec['what_you_would_need']}")
+        _render_no_recommendation(record, rec)
     else:
         print(f"\n  Confidence: {record.confidence:.0%}\n")
         print(f"  Memo:\n  {record.memo}\n")

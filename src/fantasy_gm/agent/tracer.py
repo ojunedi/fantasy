@@ -146,7 +146,8 @@ def stream_verbose(
     msgs = final_state.get("messages", [])
     tool_count = sum(1 for m in msgs if isinstance(m, ToolMessage))
     reached = any(isinstance(m, ToolMessage) and m.name in terminal_tools for m in msgs)
-    status = GREEN("reached terminal tool") if reached else YELLOW("NO terminal tool — will abstain")
+    status = (GREEN("reached terminal tool") if reached
+              else YELLOW("NO terminal tool — run TRUNCATED, no recommendation"))
     print(f"  {DIM('─' * 60)}", flush=True)
     print(f"  {DIM(f'{tool_count} tool calls · {elapsed:.0f}s · ')}{status}\n", flush=True)
     return final_state

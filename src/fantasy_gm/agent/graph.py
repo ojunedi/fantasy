@@ -111,9 +111,20 @@ class LineupGraphAgent(GraphAgent):
                 m.content for m in messages
                 if isinstance(m, AIMessage) and isinstance(m.content, str)
             )
-            recommendation = {"abstained": True, "reason": "no terminal tool called",
-                              "agent_text": text}
-            memo = "Agent did not reach a recommendation."
+            # Truncated, not abstained — see the note in trade/graph.py.
+            out_of_budget = ctx.llm_calls >= ctx.llm_budget
+            recommendation = {
+                "abstained": True,
+                "truncated": True,
+                "reason": ("LLM call budget exhausted before a terminal tool"
+                           if out_of_budget else "no terminal tool called"),
+                "llm_calls": ctx.llm_calls,
+                "llm_budget": ctx.llm_budget,
+                "agent_text": text,
+            }
+            memo = ("Run was cut off before a recommendation — "
+                    + ("the LLM call budget ran out mid-analysis."
+                       if out_of_budget else "the agent stopped without proposing."))
             confidence = 0.0
 
         return DecisionRecord(

@@ -15,6 +15,7 @@ from fantasy_gm.agent.config import AgentConfig
 from fantasy_gm.agent.trade.graph import TradeGraphAgent
 from fantasy_gm.agent.trade.tools import TradeToolContext
 from fantasy_gm.models import (
+    DecisionRecord,
     DecisionType,
     LeagueSettings,
     Platform,
@@ -303,3 +304,92 @@ def test_batched_tool_charges_once_per_chunk(hurt_ctx):
     assert len(pids) <= _BATCH_SIZE
     hurt_ctx.dispatch("get_player_news", {"player_ids": pids})
     assert hurt_ctx.llm_calls == 1              # 6 players, one chunk, one charge
+
+
+# ---- Truncated runs are not abstentions -----------------------------------
+
+class _LoopingModel:
+    """Never calls a terminal tool — it just keeps evaluating trades."""
+    def __init__(self):
+        self.calls = 0
+
+    def bind_tools(self, tools):
+        return self
+
+    def invoke(self, messages):
+        self.calls += 1
+        return AIMessage(content="", tool_calls=[{
+            "name": "evaluate_trade",
+            "args": {"send_player_ids": ["wr_spare"],
+                     "receive_player_ids": ["rb_strong"],
+                     "counterparty_team_id": "3"},
+            "id": f"t{self.calls}"}])
+
+
+def _looping_agent(budget):
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    return TradeGraphAgent(AgentConfig(max_llm_calls=budget), llm=_LoopingModel(),
+                           checkpoint_path=tmp)
+
+
+def test_budget_exhaustion_is_reported_as_truncated_not_abstained(ctx):
+    record = _looping_agent(2).decide(ctx, verbose=False)
+    rec = record.recommendation
+    assert rec["truncated"] is True
+    assert "budget exhausted" in rec["reason"]
+    assert rec["llm_calls"] == rec["llm_budget"] == 2
+    assert "cut off" in record.memo
+    # Still flagged abstained so executors refuse to act on a truncated run.
+    assert rec["abstained"] is True
+
+
+def test_truncated_run_salvages_the_packages_it_already_priced(ctx):
+    """The work that used to be silently discarded must survive the cut-off."""
+    record = _looping_agent(2).decide(ctx, verbose=False)
+    packages = record.recommendation["evaluated_packages"]
+    assert packages, "evaluated trades were dropped on truncation"
+    assert packages[0]["send_player_ids"] == ["wr_spare"]
+    assert packages[0]["receive_player_ids"] == ["rb_strong"]
+    assert "EV delta" in packages[0]["evaluation"]
+
+
+def test_a_real_abstain_is_not_marked_truncated(ctx):
+    script = [AIMessage(content="", tool_calls=[{
+        "name": "abstain",
+        "args": {"missing_information": ["no fits"], "what_you_would_need": "more depth",
+                 "memo": "Nothing available."},
+        "id": "t1"}])]
+    record = _agent_with(script).decide(ctx, verbose=False)
+    assert record.recommendation["abstained"] is True
+    assert not record.recommendation.get("truncated")
+    assert record.memo == "Nothing available."
+
+
+def _record_with(rec: dict, memo: str) -> DecisionRecord:
+    return DecisionRecord(week=1, season=2026, decision_type=DecisionType.TRADE,
+                          inputs_snapshot={}, signals_staleness={},
+                          recommendation=rec, memo=memo, confidence=0.0)
+
+
+def test_renderer_distinguishes_truncation_from_abstention(capsys):
+    from fantasy_gm.memo.cli import _render_no_recommendation
+
+    truncated = _record_with(
+        {"abstained": True, "truncated": True, "llm_calls": 8, "llm_budget": 8,
+         "evaluated_packages": [{"send_player_ids": ["A"], "receive_player_ids": ["B"],
+                                 "counterparty_team_id": "3",
+                                 "evaluation": "EV delta: +997.0 | verdict: WIN"}]},
+        "Run was cut off before a recommendation.")
+    _render_no_recommendation(truncated, truncated.recommendation)
+    out = capsys.readouterr().out
+    assert "RUN TRUNCATED" in out and "ABSTAINED" not in out
+    assert "8 of 8" in out
+    assert "+997.0" in out          # salvaged work is shown to the human
+
+    abstained = _record_with(
+        {"abstained": True, "missing_information": ["no fits"],
+         "what_you_would_need": "more depth"}, "Nothing available.")
+    _render_no_recommendation(abstained, abstained.recommendation)
+    out = capsys.readouterr().out
+    assert "AGENT ABSTAINED" in out and "TRUNCATED" not in out
+    assert "no fits" in out
