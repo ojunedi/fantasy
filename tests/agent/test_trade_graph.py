@@ -186,3 +186,120 @@ def test_evaluate_trade_tool_reports_roster_impact(ctx):
 def test_get_trade_value_tool(ctx):
     out, _ = ctx.dispatch("get_trade_value", {"player_ids": ["rb_strong", "wr_spare"]})
     assert "rb_strong" in out and "value" in out
+
+
+# ---- Batched injury / news tools ------------------------------------------
+
+def _hurt(pid, status):
+    """A roster player with a non-ACTIVE status, so the injury LLM is engaged."""
+    p = Player(platform_id=pid, name=f"P{pid}", position=Position.WR,
+               eligible_positions=[Position.WR], status=status)
+    return RosterPlayer(player=p, slot=Position.BENCH, is_starter=False)
+
+
+@pytest.fixture
+def hurt_ctx(settings):
+    mine = Roster(team_id="8", team_name="Me", owner_name="Me", week=1, season=2026, players=[
+        _rp("qb1", Position.QB, True),
+        _rp("rb1", Position.RB, True),
+        _rp("wr_ok", Position.WR, True),
+        _rp("te1", Position.TE, True),
+        _hurt("wr_out", PlayerStatus.OUT),
+        _hurt("wr_quest", PlayerStatus.QUESTIONABLE),
+    ])
+    return TradeToolContext(
+        adapter=FakeAdapter([mine]), settings=settings, team_id="8", week=1, season=2026,
+        _weekly_proj={"qb1": 20.0, "rb1": 10.0, "wr_ok": 12.0, "te1": 8.0,
+                      "wr_out": 0.0, "wr_quest": 6.0},
+    )
+
+
+def test_injury_tool_makes_one_subagent_call_for_the_batch(hurt_ctx):
+    calls = []
+
+    def fake_injury(players):
+        calls.append([p["player_name"] for p in players])
+        return {p["player_name"]: {"availability_pct": 25, "role_change_flag": True,
+                                   "note": "Limited."} for p in players}
+
+    hurt_ctx.injury_fn = fake_injury
+    hurt_ctx.llm_budget = 8
+    out, _ = hurt_ctx.dispatch("get_injury_report",
+                               {"player_ids": ["wr_out", "wr_quest"]})
+
+    assert len(calls) == 1                      # ONE call, not one per player
+    assert calls[0] == ["Pwr_out", "Pwr_quest"]
+    assert hurt_ctx.llm_calls == 1
+    assert out.count("availability_pct=25") == 2
+
+
+def test_injury_tool_answers_active_players_without_an_llm(hurt_ctx):
+    def fake_injury(players):
+        raise AssertionError("ACTIVE players must not reach the LLM")
+
+    hurt_ctx.injury_fn = fake_injury
+    hurt_ctx.llm_budget = 8
+    out, _ = hurt_ctx.dispatch("get_injury_report", {"player_ids": ["wr_ok"]})
+    assert "ACTIVE" in out
+    assert hurt_ctx.llm_calls == 0
+
+
+def test_injury_tool_mixes_active_and_hurt_in_one_call(hurt_ctx):
+    calls = []
+
+    def fake_injury(players):
+        calls.append([p["player_name"] for p in players])
+        return {p["player_name"]: {"availability_pct": 50} for p in players}
+
+    hurt_ctx.injury_fn = fake_injury
+    hurt_ctx.llm_budget = 8
+    out, _ = hurt_ctx.dispatch("get_injury_report",
+                               {"player_ids": ["wr_ok", "wr_out", "nope"]})
+    assert calls == [["Pwr_out"]]               # only the hurt player was sent
+    assert "ACTIVE" in out and "not found" in out
+    assert hurt_ctx.llm_calls == 1
+
+
+def test_news_tool_makes_one_subagent_call_for_the_batch(hurt_ctx):
+    calls = []
+
+    def fake_news(names):
+        calls.append(list(names))
+        return {n: {"events": [{"type": "usage_trend", "impact": "up",
+                                "summary": "More targets."}],
+                    "net_outlook": "up", "note": "Trending."} for n in names}
+
+    hurt_ctx.news_fn = fake_news
+    hurt_ctx.llm_budget = 8
+    out, _ = hurt_ctx.dispatch("get_player_news",
+                               {"player_ids": ["wr_ok", "wr_out", "qb1"]})
+
+    assert len(calls) == 1                      # ONE call for all three
+    assert calls[0] == ["Pwr_ok", "Pwr_out", "Pqb1"]
+    assert hurt_ctx.llm_calls == 1
+    assert out.count("net outlook up") == 3
+
+
+def test_batched_tools_respect_the_remaining_budget(hurt_ctx):
+    """A batch that would overrun the budget is skipped, not half-charged."""
+    def fake_news(names):
+        raise AssertionError("must not call the LLM with no budget left")
+
+    hurt_ctx.news_fn = fake_news
+    hurt_ctx.llm_budget = 2
+    hurt_ctx.llm_calls = 2
+    out, _ = hurt_ctx.dispatch("get_player_news", {"player_ids": ["wr_ok"]})
+    assert "budget reached" in out
+    assert hurt_ctx.llm_calls == 2
+
+
+def test_batched_tool_charges_once_per_chunk(hurt_ctx):
+    """Beyond the chunk cap the budget must be charged per model call."""
+    from fantasy_gm.agent.subagents.news import _BATCH_SIZE
+
+    hurt_ctx.news_fn = lambda names: {n: {"net_outlook": "neutral"} for n in names}
+    hurt_ctx.llm_budget = 8
+    pids = ["qb1", "rb1", "wr_ok", "te1", "wr_out", "wr_quest"]
+    assert len(pids) <= _BATCH_SIZE
+    hurt_ctx.dispatch("get_player_news", {"player_ids": pids})
+    assert hurt_ctx.llm_calls == 1              # 6 players, one chunk, one charge

@@ -56,9 +56,11 @@ class TradeToolContext(ToolContext):
     _id_map: Any | None = None
     _player_index: dict[str, dict] | None = None  # pid -> {player, position, team, name}
 
-    # Sub-agent callables (injectable for tests).
-    injury_fn: Callable[..., dict] | None = None
-    news_fn: Callable[..., dict] | None = None
+    # Sub-agent callables (injectable for tests). Both are BATCH calls: they
+    # take a list of players and return a dict keyed by player name, so a whole
+    # batch costs one model call instead of one per player.
+    injury_fn: Callable[..., dict[str, dict]] | None = None
+    news_fn: Callable[..., dict[str, dict]] | None = None
     # Market-value fetch (FantasyCalc); injectable for offline tests.
     market_fn: Callable[..., dict] | None = None
     # Optional manager directives from the pre-run interview. None = unconstrained.
@@ -597,47 +599,92 @@ class TradeToolContext(ToolContext):
             f"  trend: {prof.trend.upper()}"
             + (" — BREAKOUT flag" if prof.breakout else ""))
 
+    def _llm_calls_for(self, count: int, batch_size: int) -> int:
+        """How many model calls a batch of `count` players will cost."""
+        return (count + batch_size - 1) // batch_size if count else 0
+
     def _tool_get_injury_report(self, tool_input: dict) -> str:
-        pid = tool_input.get("player_id", "")
-        info = self.player_index().get(pid)
-        if not info:
-            return f"Player {pid} not found."
-        player: Player = info["player"]
+        """Interpret injuries for a batch of players in one sub-agent call.
+
+        ACTIVE players are answered deterministically and never reach the LLM —
+        there is no injury picture to interpret.
+        """
+        from fantasy_gm.agent.subagents.injury import _BATCH_SIZE
         from fantasy_gm.models import PlayerStatus
-        if player.status == PlayerStatus.ACTIVE:
-            return f"{player.name}: ACTIVE — no injury concern, LLM interpretation skipped."
-        if not self.llm_call_allowed():
-            return (f"{player.name}: {player.status.value} — injury interpretation skipped "
-                    f"(LLM call budget reached this run).")
-        fn = self.injury_fn or _default_injury_fn
-        result = fn(
-            player_name=player.name,
-            status=player.status.value,
-            practice_participation=None,
-            injury_description=None,
-            snap_share_last3=None,
-        )
-        self.record_llm_call()
-        return (f"Injury read for {player.name}: availability_pct="
-                f"{result.get('availability_pct')}, role_change={result.get('role_change_flag')}. "
-                f"{result.get('note', '')}")
+
+        pids = tool_input.get("player_ids") or []
+        idx = self.player_index()
+
+        lines: list[str] = []
+        pending: list[dict] = []
+        pending_pids: list[str] = []
+        for pid in pids:
+            info = idx.get(pid)
+            if not info:
+                lines.append(f"Player {pid} not found.")
+                continue
+            player: Player = info["player"]
+            if player.status == PlayerStatus.ACTIVE:
+                lines.append(f"{player.name}: ACTIVE — no injury concern.")
+                continue
+            pending.append({"player_name": player.name, "status": player.status.value})
+            pending_pids.append(pid)
+
+        if pending:
+            cost = self._llm_calls_for(len(pending), _BATCH_SIZE)
+            if self.llm_calls + cost > self.llm_budget:
+                for p in pending:
+                    lines.append(f"{p['player_name']}: {p['status']} — injury "
+                                 f"interpretation skipped (LLM call budget reached).")
+            else:
+                fn = self.injury_fn or _default_injury_fn
+                results = fn(pending)
+                for _ in range(cost):
+                    self.record_llm_call()
+                for p in pending:
+                    r = results.get(p["player_name"], {})
+                    lines.append(
+                        f"Injury read for {p['player_name']}: availability_pct="
+                        f"{r.get('availability_pct')}, role_change="
+                        f"{r.get('role_change_flag')}. {r.get('note', '')}")
+
+        return "\n".join(lines) or "No players requested."
 
     def _tool_get_player_news(self, tool_input: dict) -> str:
-        pid = tool_input.get("player_id", "")
-        info = self.player_index().get(pid)
-        if not info:
-            return f"Player {pid} not found."
-        if not self.llm_call_allowed():
-            return f"News for {info['name']}: skipped (LLM call budget reached this run)."
-        fn = self.news_fn or _default_news_fn
-        result = fn(player_name=info["name"])
-        self.record_llm_call()
-        events = result.get("events", [])
-        head = (f"News read for {info['name']}: net outlook "
-                f"{result.get('net_outlook', 'neutral')}. {result.get('note', '')}")
-        for e in events[:4]:
-            head += f"\n  - [{e.get('type')}/{e.get('impact')}] {e.get('summary')}"
-        return head
+        """Interpret recent news for a batch of players in one sub-agent call."""
+        from fantasy_gm.agent.subagents.news import _BATCH_SIZE
+
+        pids = tool_input.get("player_ids") or []
+        idx = self.player_index()
+
+        lines: list[str] = []
+        names: list[str] = []
+        for pid in pids:
+            info = idx.get(pid)
+            if not info:
+                lines.append(f"Player {pid} not found.")
+                continue
+            names.append(info["name"])
+
+        if names:
+            cost = self._llm_calls_for(len(names), _BATCH_SIZE)
+            if self.llm_calls + cost > self.llm_budget:
+                lines.append("News interpretation skipped for "
+                             f"{', '.join(names)} (LLM call budget reached).")
+            else:
+                fn = self.news_fn or _default_news_fn
+                results = fn(names)
+                for _ in range(cost):
+                    self.record_llm_call()
+                for name in names:
+                    r = results.get(name, {})
+                    head = (f"News read for {name}: net outlook "
+                            f"{r.get('net_outlook', 'neutral')}. {r.get('note', '')}")
+                    for e in (r.get("events") or [])[:4]:
+                        head += f"\n  - [{e.get('type')}/{e.get('impact')}] {e.get('summary')}"
+                    lines.append(head)
+
+        return "\n".join(lines) or "No players requested."
 
     def _tool_propose_trades(self, tool_input: dict) -> str:
         import json
@@ -663,11 +710,11 @@ class TradeToolContext(ToolContext):
         return json.dumps(tool_input)
 
 
-def _default_injury_fn(**kwargs) -> dict:
-    from fantasy_gm.agent.subagents.injury import interpret_injury
-    return interpret_injury(**kwargs)
+def _default_injury_fn(players: list[dict]) -> dict[str, dict]:
+    from fantasy_gm.agent.subagents.injury import interpret_injuries
+    return interpret_injuries(players)
 
 
-def _default_news_fn(**kwargs) -> dict:
-    from fantasy_gm.agent.subagents.news import interpret_news
-    return interpret_news(**kwargs)
+def _default_news_fn(player_names: list[str]) -> dict[str, dict]:
+    from fantasy_gm.agent.subagents.news import interpret_news_batch
+    return interpret_news_batch(player_names)

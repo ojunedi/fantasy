@@ -110,7 +110,8 @@ class TradeGraphAgent(GraphAgent):
             f"{prior}"
             f"Use find_trade_targets, then pressure-test candidates with get_trade_value, "
             f"evaluate_trade, get_matchup_analysis, get_schedule_strength, get_usage_trends. "
-            f"Call get_injury_report only for players with status != ACTIVE. "
+            f"get_injury_report and get_player_news take a LIST of player ids — pass every "
+            f"player you care about in ONE call each; do NOT call them once per player. "
             f"Then call propose_trades or abstain."
         )
 

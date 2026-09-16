@@ -27,7 +27,9 @@ tools cannot exercise:
    and `find_trade_targets` to locate mutual fits (their surplus ↔ my need).
 2. Pressure-test candidates with the analytical tools: `get_trade_value`, \
    `get_matchup_analysis`, `get_schedule_strength`, `get_usage_trends`, and — \
-   for anyone whose status is unclear — `get_injury_report` and `get_player_news`.
+   for anyone whose status is unclear — `get_injury_report` and `get_player_news`, \
+   which take a LIST of player ids: batch every player into ONE call each rather \
+   than calling them per player.
 3. Quantify every package with `evaluate_trade` (EV delta, fairness, and the \
    effect on my optimized starting lineup). Then DISCARD any package the other \
    owner would not plausibly accept — keep only near-balanced deals where my edge \

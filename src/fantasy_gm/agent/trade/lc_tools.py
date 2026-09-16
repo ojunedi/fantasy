@@ -29,7 +29,7 @@ class FindTargetsArgs(BaseModel):
 
 
 class PlayerIdsArgs(BaseModel):
-    player_ids: list[str] = Field(description="Player ids to value.")
+    player_ids: list[str] = Field(description="Player ids — pass them all in one call.")
 
 
 class EvaluateTradeArgs(BaseModel):
@@ -111,11 +111,11 @@ def build_trade_tools(ctx: TradeToolContext, include_prefetch_tools: bool = True
     def get_usage_trends(player_id: str) -> str:
         return _dispatch("get_usage_trends", {"player_id": player_id})
 
-    def get_injury_report(player_id: str) -> str:
-        return _dispatch("get_injury_report", {"player_id": player_id})
+    def get_injury_report(player_ids: list[str]) -> str:
+        return _dispatch("get_injury_report", {"player_ids": player_ids})
 
-    def get_player_news(player_id: str) -> str:
-        return _dispatch("get_player_news", {"player_id": player_id})
+    def get_player_news(player_ids: list[str]) -> str:
+        return _dispatch("get_player_news", {"player_ids": player_ids})
 
     def propose_trades(trades: list[dict], memo: str, what_would_change_this: str) -> str:
         payload = {
@@ -160,11 +160,15 @@ def build_trade_tools(ctx: TradeToolContext, include_prefetch_tools: bool = True
             args_schema=PlayerIdArgs,
             description="Volume/opportunity trends (targets, carries, shares, breakout flag) for a player."),
         StructuredTool.from_function(get_injury_report, name="get_injury_report",
-            args_schema=PlayerIdArgs,
-            description="LLM-interpreted injury read: availability %, role-change flag, note."),
+            args_schema=PlayerIdsArgs,
+            description="LLM-interpreted injury read (availability %, role-change flag, note) "
+                        "for a BATCH of players. Pass EVERY player you care about in ONE call — "
+                        "it costs the same as one player and lets teammates be read together."),
         StructuredTool.from_function(get_player_news, name="get_player_news",
-            args_schema=PlayerIdArgs,
-            description="LLM-interpreted recent news: structured events and net outlook for a player."),
+            args_schema=PlayerIdsArgs,
+            description="LLM-interpreted recent news (events, net outlook) for a BATCH of "
+                        "players. Pass EVERY player you care about in ONE call — the news feed "
+                        "is league-wide, so one call covers them all at the cost of one."),
         StructuredTool.from_function(propose_trades, name="propose_trades",
             args_schema=ProposeTradesArgs,
             description="TERMINAL. Submit ranked trade proposals with rationale + pitch. Ends the task."),
