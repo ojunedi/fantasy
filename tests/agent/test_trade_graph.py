@@ -625,3 +625,37 @@ def test_renderer_marks_a_deterministic_pick(capsys):
     out = capsys.readouterr().out
     assert "PICKED BY SCORING, NOT BY THE AGENT" in out
     assert "+900" in out
+
+
+def test_duplicate_packages_are_priced_once(valued_ctx):
+    """Re-pricing the same players must not let one trade fill every slot."""
+    ctx = valued_ctx
+    for _ in range(3):
+        ctx.dispatch("evaluate_trade", {"send_player_ids": ["wr_spare"],
+                                        "receive_player_ids": ["rb_strong"],
+                                        "counterparty_team_id": "3"})
+    # Same players, different (and omitted) team id — still the same package.
+    ctx.dispatch("evaluate_trade", {"send_player_ids": ["wr_spare"],
+                                    "receive_player_ids": ["rb_strong"]})
+    ctx.dispatch("evaluate_trade", {"receive_player_ids": ["rb_strong"],
+                                    "send_player_ids": ["wr_spare"],
+                                    "counterparty_team_id": "9"})
+    assert len(ctx.evaluations) == 1
+
+
+def test_counterparty_is_derived_when_the_model_omits_it(valued_ctx):
+    """A package with no counterparty renders as 'team None' and can't be sent."""
+    ctx = valued_ctx
+    ctx.dispatch("evaluate_trade", {"send_player_ids": ["wr_spare"],
+                                    "receive_player_ids": ["rb_strong"]})
+    assert ctx.evaluations[0]["counterparty_team_id"] == "3"   # rb_strong's owner
+
+
+def test_counterparty_stays_unset_when_it_cannot_be_derived(valued_ctx):
+    """A hand-built player index has no owner data — must not raise."""
+    ctx = valued_ctx
+    ctx._player_index = {pid: {k: v for k, v in info.items() if k != "owner_team_id"}
+                         for pid, info in ctx.player_index().items()}
+    ctx.dispatch("evaluate_trade", {"send_player_ids": ["wr_spare"],
+                                    "receive_player_ids": ["rb_strong"]})
+    assert ctx.evaluations[0]["counterparty_team_id"] is None

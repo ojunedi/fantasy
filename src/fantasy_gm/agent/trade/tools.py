@@ -65,9 +65,9 @@ class TradeToolContext(ToolContext):
     market_fn: Callable[..., dict] | None = None
     # Optional manager directives from the pre-run interview. None = unconstrained.
     preferences: Any = None
-    # Every package `evaluate_trade` priced, in structured form. The scoring is
-    # deterministic, so this is enough to pick a recommendation WITHOUT the model:
-    # see `best_evaluated_package`.
+    # Every package `evaluate_trade` priced, in structured form, deduplicated.
+    # The scoring is deterministic, so this is enough to pick a recommendation
+    # WITHOUT the model: see `acceptable_packages`.
     evaluations: list[dict] = field(default_factory=list)
 
     # ---- lazy builders -------------------------------------------------
@@ -104,6 +104,10 @@ class TradeToolContext(ToolContext):
                     }
             self._player_index = idx
         return self._player_index
+
+    def name_map(self) -> dict[str, str]:
+        """pid -> display name, for the preference/violation helpers."""
+        return {pid: info["name"] for pid, info in self.player_index().items()}
 
     def weekly_projections(self) -> dict[str, float]:
         """Blended weekly projection per player id (ESPN + Sleeper)."""
@@ -545,12 +549,36 @@ class TradeToolContext(ToolContext):
                 f"{ev.roster_impact.before_total:.1f} → {ev.roster_impact.after_total:.1f} "
                 f"({ev.roster_impact.delta:+.1f})")
 
+        # `counterparty_team_id` is optional on the tool and models routinely omit
+        # it. The owner of the incoming players is known here, so derive it rather
+        # than storing None — a package with no counterparty renders as "team
+        # None" in the send-offer steps and cannot be acted on.
+        counterparty = tool_input.get("counterparty_team_id")
+        if not counterparty:
+            owners = {idx[i].get("owner_team_id") for i in receive_ids if i in idx}
+            owners.discard(self.team_id)
+            owners.discard(None)
+            if len(owners) == 1:
+                counterparty = next(iter(owners))
+
+        # The same package gets re-priced repeatedly in a long run; scoring is
+        # deterministic, so a duplicate adds nothing and would let one trade fill
+        # every slot of a deterministic recommendation. Keyed on the players
+        # only: `counterparty_team_id` is not an input to the scoring, so
+        # including it would let a model re-admit an identical package just by
+        # sending (or omitting) a different team id.
+        key = (frozenset(send_ids), frozenset(receive_ids))
+        if any((frozenset(e.get("send_player_ids", [])),
+                frozenset(e.get("receive_player_ids", []))) == key
+               for e in self.evaluations):
+            return "\n".join(lines)
+
         self.evaluations.append({
             "send_player_ids": list(send_ids),
             "receive_player_ids": list(receive_ids),
             "send_names": [idx.get(i, {}).get("name", i) for i in send_ids],
             "receive_names": [idx.get(i, {}).get("name", i) for i in receive_ids],
-            "counterparty_team_id": tool_input.get("counterparty_team_id"),
+            "counterparty_team_id": counterparty,
             "send_value": ev.send_value,
             "receive_value": ev.receive_value,
             "ev_delta": ev.ev_delta,
@@ -709,6 +737,8 @@ class TradeToolContext(ToolContext):
         import json
         idx = self.player_index()
         prefs = self.preferences
+        constrained = prefs is not None and not prefs.is_empty()
+        names = self.name_map() if constrained else {}
         enriched = dict(tool_input)
         for pkg in enriched.get("trades", []):
             send = pkg.get("send_player_ids", [])
@@ -717,8 +747,7 @@ class TradeToolContext(ToolContext):
             pkg["receive_names"] = [idx.get(i, {}).get("name", i) for i in receive]
             # Record where a package contradicts the manager's directives. The
             # human still decides — a near-miss is worth seeing, not hiding.
-            if prefs is not None and not prefs.is_empty():
-                names = {pid: info["name"] for pid, info in idx.items()}
+            if constrained:
                 problems = prefs.violations(send, receive, names)
                 if problems:
                     pkg["directive_violations"] = problems

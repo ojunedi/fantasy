@@ -128,7 +128,7 @@ class TradeGraphAgent(GraphAgent):
         names = None
         prefs = getattr(ctx, "preferences", None)
         if prefs is not None and not prefs.is_empty():
-            names = {pid: info["name"] for pid, info in ctx.player_index().items()}
+            names = ctx.name_map()
         return acceptable_packages(getattr(ctx, "evaluations", []), prefs, names)
 
     def thread_id(self, ctx: ToolContext) -> str:
@@ -158,7 +158,7 @@ class TradeGraphAgent(GraphAgent):
         prefs = getattr(ctx, "preferences", None)
         if prefs is not None and not prefs.is_empty():
             from fantasy_gm.agent.trade.preferences import describe
-            names = {pid: info["name"] for pid, info in ctx.player_index().items()}
+            names = ctx.name_map()
             directives = describe(prefs, names) + "\n\n"
 
         return (

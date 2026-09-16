@@ -151,11 +151,18 @@ def stream_verbose(
               else YELLOW("NO terminal tool — run TRUNCATED, no recommendation"))
     # Rejected tool calls are wasted turns, and they were invisible here: a run
     # where 29% of calls failed schema validation looked identical to a clean one.
+    # Every prefix ToolNode uses for a call it could not complete: schema
+    # validation ("Error invoking"), a raising handler ("Error executing"), an
+    # unknown tool name, and the generic template ("Error: ...").
+    # `_text_of` rather than `str(...)`: some LC versions wrap tool content in
+    # blocks, and `str([{'type': 'text', ...}])` never matches a prefix, so the
+    # rejected calls would stay invisible on exactly those providers.
     failed = [m for m in tool_msgs
-              if str(m.content).startswith("Error invoking tool")]
+              if _text_of(m).startswith(("Error invoking tool",
+                                         "Error executing tool", "Error:"))]
     fail_note = ""
     if failed:
-        names = ", ".join(sorted({m.name for m in failed}))
+        names = ", ".join(sorted({m.name or "?" for m in failed}))
         fail_note = YELLOW(f" · {len(failed)} REJECTED tool calls ({names})")
     print(f"  {DIM('─' * 60)}", flush=True)
     print(f"  {DIM(f'{tool_count} tool calls · {elapsed:.0f}s · ')}{status}{fail_note}\n",

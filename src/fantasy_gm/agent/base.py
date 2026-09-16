@@ -137,7 +137,8 @@ def _bind_forced(llm: Any, tools: list, choice: str = "any") -> Any:
     Falls back to a plain binding when the provider or a test double does not
     accept `tool_choice`, so this can never break a run.
     """
-    for attempt in (choice, "any"):
+    attempts = [choice] if choice == "any" else [choice, "any"]
+    for attempt in attempts:
         try:
             return llm.bind_tools(tools, tool_choice=attempt)
         except Exception:
@@ -162,6 +163,29 @@ def _strip_non_terminal(response: Any, terminal_tools: frozenset[str]) -> Any:
                                 if c.get("name") not in terminal_tools}))
     print(f"  dropped withdrawn tool call(s) on the final turn: {dropped}", flush=True)
     response.tool_calls = kept
+    # Providers that return block content (Anthropic) ALSO carry the call as a
+    # `tool_use` block, and `tool_calls` is not what gets re-sent — the blocks
+    # are. Leaving a dropped call's block behind means the next request holds a
+    # `tool_use` with no matching `tool_result`, which the API rejects outright
+    # (400), killing the run this guard exists to save.
+    content = getattr(response, "content", None)
+    if isinstance(content, list):
+        kept_ids = {c.get("id") for c in kept}
+        blocks = [
+            b for b in content
+            if not (isinstance(b, dict)
+                    and b.get("type") in ("tool_use", "tool_call", "function_call")
+                    and b.get("id") not in kept_ids)
+        ]
+        # An emptied block list is NOT dropped on the way out: the client only
+        # skips a blank assistant message when it is followed by another one,
+        # and here it never is — a reply left with no tool calls routes straight
+        # back to the agent, so it is the last message in the next request. That
+        # would put `{"role": "assistant", "content": []}` on the wire. Leave a
+        # truthful text block instead of an empty turn.
+        response.content = blocks or [
+            {"type": "text",
+             "text": f"(withdrawn tool call(s) removed: {dropped})"}]
     return response
 
 
@@ -260,7 +284,10 @@ class GraphAgent(ABC):
             return forced_cache[choice]
 
         # Set when a turn comes back with no tool call at all, so the retry is
-        # offered only the terminal tools.
+        # offered only the terminal tools. Consumed by the next agent turn: it
+        # buys ONE forced turn, not a permanent switch. Leaving it latched meant
+        # a single blank reply on turn 1 withdrew the analysis tools for the
+        # whole run, which forced an immediate abstain with nothing gathered.
         force_terminal = False
         # `max_llm_calls` budgets ANALYSIS. One further call is held in reserve
         # purely to submit a decision, because the budget can be overshot inside
@@ -280,15 +307,23 @@ class GraphAgent(ABC):
             return True
 
         def agent_node(state: AgentState) -> dict:
+            nonlocal force_terminal
             # Exactly one system message, always. Anthropic exposes a single
             # top-level `system` field and rejects non-consecutive system
             # messages, so the final-turn directive is folded in here rather
             # than appended as a second one.
             system_text = system_prompt
-            final_turn = ctx.llm_calls >= ctx.llm_budget - 1 or force_terminal
+            forced, force_terminal = force_terminal, False
+            final_turn = ctx.llm_calls >= ctx.llm_budget - 1 or forced
             if final_turn:
+                # Say why truthfully: a blank-reply retry can happen with budget
+                # left, and telling the model its budget is gone when it is not
+                # argues for an abstain it does not need to make.
+                headline = ("LLM CALL BUDGET REACHED — this is your FINAL turn."
+                            if ctx.llm_calls >= ctx.llm_budget - 1
+                            else "NO TOOL CALL RECEIVED — decide now.")
                 system_text += (
-                    "\n\n## LLM CALL BUDGET REACHED — this is your FINAL turn.\n"
+                    f"\n\n## {headline}\n"
                     "The analysis tools have been WITHDRAWN; only the terminal tools "
                     f"remain ({terminal}). Using only what you have already gathered, "
                     "call exactly one of them now; if the data is insufficient, call "

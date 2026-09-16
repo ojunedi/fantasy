@@ -44,6 +44,11 @@ def coerce_str_list(value: Any) -> Any:
             return [str(v) for v in parsed]
         if isinstance(parsed, (str, int, float)):
             return [str(parsed)]
+        if isinstance(parsed, dict):
+            # Valid JSON, but an object where ids were asked for. Splitting it on
+            # commas would manufacture ids out of its syntax ('{"a": 1' …), which
+            # is exactly the invented data this module refuses to guess at.
+            return value
         # Not JSON: accept a plain comma-separated list.
         if "," in text:
             return [part.strip() for part in text.split(",") if part.strip()]
