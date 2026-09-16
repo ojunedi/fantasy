@@ -356,3 +356,65 @@ def test_final_turn_directive_says_tools_were_withdrawn(ctx):
 
     assert "WITHDRAWN" not in seen[0]
     assert "WITHDRAWN" in seen[-1]
+
+
+class _EmptyThenTerminal:
+    """Returns a blank message first — the live failure — then a terminal call."""
+    def __init__(self):
+        self.offered: list[list[str]] = []
+        self.calls = 0
+
+    def bind_tools(self, tools):
+        outer = self
+
+        class _B:
+            def __init__(self, names):
+                self.names = names
+
+            def invoke(self, messages):
+                outer.offered.append(self.names)
+                outer.calls += 1
+                if outer.calls == 1:
+                    return AIMessage(content="")      # no content, no tool calls
+                return AIMessage(content="", tool_calls=[
+                    {"name": "abstain", "args": {"missing_information": ["x"],
+                                                 "what_you_would_need": "y",
+                                                 "memo": "z"}, "id": "t1"}])
+        return _B([t.name for t in tools])
+
+
+def test_an_empty_model_response_does_not_silently_end_the_run(ctx):
+    """A blank reply is not a valid ending — the run must get another turn."""
+    model = _EmptyThenTerminal()
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    agent = LineupGraphAgent(AgentConfig(max_llm_calls=6), llm=model, checkpoint_path=tmp)
+    record = agent.decide(ctx, verbose=False)
+
+    assert model.calls == 2
+    # The retry is restricted to terminal tools so it cannot wander off again.
+    assert set(model.offered[1]) == set(agent.terminal_tools)
+    # A real abstain came back, not the synthesized "truncated" fallback.
+    assert not record.recommendation.get("truncated")
+    assert record.recommendation["abstained"] is True
+
+
+def test_an_empty_response_with_no_budget_left_still_terminates(ctx):
+    """The retry must not loop forever when the budget is already spent."""
+    class _AlwaysEmpty:
+        def __init__(self):
+            self.calls = 0
+
+        def bind_tools(self, tools):
+            return self
+
+        def invoke(self, messages):
+            self.calls += 1
+            return AIMessage(content="")
+
+    model = _AlwaysEmpty()
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    agent = LineupGraphAgent(AgentConfig(max_llm_calls=3), llm=model, checkpoint_path=tmp)
+    record = agent.decide(ctx, verbose=False)
+
+    assert model.calls == 3                          # bounded by the budget
+    assert record.recommendation["truncated"] is True

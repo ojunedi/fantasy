@@ -186,12 +186,6 @@ class GraphAgent(ABC):
         model = getattr(llm, "model", None) or getattr(llm, "model_name", None) or "?"
         return f"{type(llm).__name__}({model})"
 
-    def _route_after_agent(self, state: AgentState) -> str:
-        last = state["messages"][-1]
-        if getattr(last, "tool_calls", None):
-            return "tools"
-        return END
-
     def _compile(self, ctx: ToolContext, checkpointer, llm):
         tools = self.build_tools(ctx)
         bound = llm.bind_tools(tools)
@@ -207,13 +201,17 @@ class GraphAgent(ABC):
         terminal_only = [t for t in tools if getattr(t, "name", None) in self.terminal_tools]
         bound_terminal = llm.bind_tools(terminal_only) if terminal_only else bound
 
+        # Set when a turn comes back with no tool call at all, so the retry is
+        # offered only the terminal tools.
+        force_terminal = False
+
         def agent_node(state: AgentState) -> dict:
             # Exactly one system message, always. Anthropic exposes a single
             # top-level `system` field and rejects non-consecutive system
             # messages, so the final-turn directive is folded in here rather
             # than appended as a second one.
             system_text = system_prompt
-            final_turn = ctx.llm_calls >= ctx.llm_budget - 1
+            final_turn = ctx.llm_calls >= ctx.llm_budget - 1 or force_terminal
             if final_turn:
                 system_text += (
                     "\n\n## LLM CALL BUDGET REACHED — this is your FINAL turn.\n"
@@ -240,6 +238,21 @@ class GraphAgent(ABC):
                           f"({attempt + 1}/{attempts - 1}): {exc}", flush=True)
             return {"messages": [response]}
 
+        def route_after_agent(state: AgentState) -> str:
+            nonlocal force_terminal
+            last = state["messages"][-1]
+            if getattr(last, "tool_calls", None):
+                return "tools"
+            # No tool call. A run must end on a terminal tool, so an empty or
+            # prose-only reply is not a valid ending — the provider returning a
+            # blank message was silently killing runs mid-analysis. Give it one
+            # more turn with only the terminal tools bound; the LLM budget bounds
+            # how often this can repeat.
+            if ctx.llm_calls < ctx.llm_budget:
+                force_terminal = True
+                return "agent"
+            return END
+
         def route_after_tools(state: AgentState) -> str:
             for msg in reversed(state["messages"]):
                 if isinstance(msg, ToolMessage):
@@ -256,8 +269,8 @@ class GraphAgent(ABC):
         graph.add_node("agent", agent_node)
         graph.add_node("tools", ToolNode(tools))
         graph.add_edge(START, "agent")
-        graph.add_conditional_edges("agent", self._route_after_agent,
-                                    {"tools": "tools", END: END})
+        graph.add_conditional_edges("agent", route_after_agent,
+                                    {"tools": "tools", "agent": "agent", END: END})
         graph.add_conditional_edges("tools", route_after_tools,
                                     {"agent": "agent", END: END})
         return graph.compile(checkpointer=checkpointer)
