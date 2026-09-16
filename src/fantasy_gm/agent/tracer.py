@@ -144,10 +144,20 @@ def stream_verbose(
 
     elapsed = time.time() - t0
     msgs = final_state.get("messages", [])
-    tool_count = sum(1 for m in msgs if isinstance(m, ToolMessage))
-    reached = any(isinstance(m, ToolMessage) and m.name in terminal_tools for m in msgs)
+    tool_msgs = [m for m in msgs if isinstance(m, ToolMessage)]
+    tool_count = len(tool_msgs)
+    reached = any(m.name in terminal_tools for m in tool_msgs)
     status = (GREEN("reached terminal tool") if reached
               else YELLOW("NO terminal tool — run TRUNCATED, no recommendation"))
+    # Rejected tool calls are wasted turns, and they were invisible here: a run
+    # where 29% of calls failed schema validation looked identical to a clean one.
+    failed = [m for m in tool_msgs
+              if str(m.content).startswith("Error invoking tool")]
+    fail_note = ""
+    if failed:
+        names = ", ".join(sorted({m.name for m in failed}))
+        fail_note = YELLOW(f" · {len(failed)} REJECTED tool calls ({names})")
     print(f"  {DIM('─' * 60)}", flush=True)
-    print(f"  {DIM(f'{tool_count} tool calls · {elapsed:.0f}s · ')}{status}\n", flush=True)
+    print(f"  {DIM(f'{tool_count} tool calls · {elapsed:.0f}s · ')}{status}{fail_note}\n",
+          flush=True)
     return final_state

@@ -101,3 +101,32 @@ def test_a_renamed_field_is_still_an_error():
 def test_unparseable_object_soup_is_left_to_fail():
     with pytest.raises(ValidationError):
         _Model(ids=[], items="not json at all")
+
+
+# ---- Rejected calls are visible in the trace ------------------------------
+
+def test_trace_summary_reports_rejected_tool_calls(capsys):
+    """A run where calls bounce off validation must not look like a clean run."""
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from fantasy_gm.agent.tracer import stream_verbose
+
+    msgs = [
+        AIMessage(content="", tool_calls=[
+            {"name": "evaluate_trade", "args": {}, "id": "a"}]),
+        ToolMessage(content="Error invoking tool 'evaluate_trade' with kwargs {} with "
+                            "error:\n send_player_ids: Input should be a valid list",
+                    name="evaluate_trade", tool_call_id="a"),
+        ToolMessage(content="Trade evaluation: fine.", name="evaluate_trade",
+                    tool_call_id="b"),
+    ]
+
+    class _App:
+        def stream(self, *a, **kw):
+            yield {"messages": msgs}
+
+    stream_verbose(_App(), {"messages": []}, {}, frozenset({"propose_trades"}),
+                   label="test")
+    out = capsys.readouterr().out
+    assert "1 REJECTED tool calls" in out
+    assert "evaluate_trade" in out
