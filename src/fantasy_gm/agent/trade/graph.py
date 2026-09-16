@@ -12,7 +12,7 @@ import time
 from fantasy_gm.agent.base import GraphAgent, ToolContext
 from fantasy_gm.agent.trade.lc_tools import TERMINAL_TOOLS, build_trade_tools
 from fantasy_gm.agent.trade.prompts import TRADE_SYSTEM_PROMPT
-from fantasy_gm.agent.trade.tools import TradeToolContext
+from fantasy_gm.agent.trade.tools import TradeToolContext, acceptable_packages
 from fantasy_gm.models import DecisionRecord, DecisionType
 
 
@@ -84,6 +84,25 @@ def _evaluated_packages(call_log: list[dict]) -> list[dict]:
     return packages
 
 
+def _package_from_evaluation(ev: dict) -> dict:
+    """Render a priced evaluation in the shape `propose_trades` produces."""
+    return {
+        "counterparty_team_id": ev.get("counterparty_team_id"),
+        "send_player_ids": ev.get("send_player_ids", []),
+        "receive_player_ids": ev.get("receive_player_ids", []),
+        "send_names": ev.get("send_names", []),
+        "receive_names": ev.get("receive_names", []),
+        "rationale": (f"Computed value gain {ev.get('ev_delta', 0):+.0f} at fairness "
+                      f"{ev.get('fairness', 0):.2f} ({ev.get('verdict', '?')}); "
+                      f"this week's starting lineup moves "
+                      f"{ev.get('lineup_delta', 0):+.1f} points."),
+        "counterparty_pitch": ("Not drafted — the run was cut off before the agent "
+                               "wrote a pitch. Balanced on value, so lead with the "
+                               "positional fit for their roster."),
+        "confidence": round(min(0.5, ev.get("fairness", 0.0) * 0.5), 2),
+    }
+
+
 class TradeGraphAgent(GraphAgent):
     system_prompt = TRADE_SYSTEM_PROMPT
     terminal_tools = frozenset(TERMINAL_TOOLS)
@@ -91,6 +110,26 @@ class TradeGraphAgent(GraphAgent):
 
     def build_tools(self, ctx: ToolContext) -> list:
         return build_trade_tools(ctx, include_prefetch_tools=False)  # type: ignore[arg-type]
+
+    def final_tool_choice(self, ctx: ToolContext) -> str:
+        """Name the terminal tool the evidence supports.
+
+        We already know deterministically whether any priced package is worth
+        recommending, so there is no reason to leave the model a choice it has
+        shown it will dodge: force `propose_trades` when a viable package exists
+        and `abstain` when none does.
+        """
+        if self._viable(ctx):
+            return "propose_trades"
+        return "abstain"
+
+    @staticmethod
+    def _viable(ctx: ToolContext) -> list[dict]:
+        names = None
+        prefs = getattr(ctx, "preferences", None)
+        if prefs is not None and not prefs.is_empty():
+            names = {pid: info["name"] for pid, info in ctx.player_index().items()}
+        return acceptable_packages(getattr(ctx, "evaluations", []), prefs, names)
 
     def thread_id(self, ctx: ToolContext) -> str:
         # Fresh thread each invocation so prior checkpoint state doesn't bias proposals.
@@ -172,20 +211,44 @@ class TradeGraphAgent(GraphAgent):
                 if isinstance(m, AIMessage) and isinstance(m.content, str)
             )
             out_of_budget = ctx.llm_calls >= ctx.llm_budget
-            recommendation = {
-                "abstained": True,
-                "truncated": True,
-                "reason": ("LLM call budget exhausted before a terminal tool"
-                           if out_of_budget else "no terminal tool called"),
-                "llm_calls": ctx.llm_calls,
-                "llm_budget": ctx.llm_budget,
-                "evaluated_packages": _evaluated_packages(ctx.call_log),
-                "agent_text": text,
-            }
-            memo = ("Run was cut off before a recommendation — "
-                    + ("the LLM call budget ran out mid-analysis."
-                       if out_of_budget else "the agent stopped without proposing."))
-            confidence = 0.0
+            cut_off = ("the LLM call budget ran out mid-analysis."
+                       if out_of_budget else "the agent stopped without proposing.")
+            viable = self._viable(ctx)
+            if viable:
+                # The model never submitted, but the scoring that would have
+                # justified a proposal is deterministic and already done. Pick
+                # the best package from it rather than discarding the run: the
+                # EV, fairness and lineup impact below are computed, not written
+                # by the model, so nothing here is invented.
+                recommendation = {
+                    "trades": [_package_from_evaluation(e) for e in viable[:3]],
+                    "selected_deterministically": True,
+                    "reason": f"Run was cut off ({cut_off.rstrip('.')}); "
+                              "packages ranked by computed EV and fairness.",
+                    "llm_calls": ctx.llm_calls,
+                    "llm_budget": ctx.llm_budget,
+                    "what_would_change_this": "A fresh injury or usage report on "
+                                              "any player in these packages.",
+                }
+                memo = (f"Run was cut off before the agent submitted, so the best of "
+                        f"{len(ctx.evaluations)} priced packages was selected by EV and "
+                        f"fairness instead. No written rationale — the numbers are the case.")
+                # Deterministic selection carries no model judgment, so confidence
+                # reflects the margin of the pick, capped well below a real proposal.
+                confidence = min(0.5, 0.2 + viable[0]["fairness"] * 0.3)
+            else:
+                recommendation = {
+                    "abstained": True,
+                    "truncated": True,
+                    "reason": ("LLM call budget exhausted before a terminal tool"
+                               if out_of_budget else "no terminal tool called"),
+                    "llm_calls": ctx.llm_calls,
+                    "llm_budget": ctx.llm_budget,
+                    "evaluated_packages": _evaluated_packages(ctx.call_log),
+                    "agent_text": text,
+                }
+                memo = "Run was cut off before a recommendation — " + cut_off
+                confidence = 0.0
 
         return DecisionRecord(
             week=ctx.week, season=ctx.season, decision_type=DecisionType.TRADE,

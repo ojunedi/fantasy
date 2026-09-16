@@ -12,7 +12,7 @@ constructor so the graph tests run fully offline.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from fantasy_gm.agent.base import ToolContext
@@ -65,6 +65,10 @@ class TradeToolContext(ToolContext):
     market_fn: Callable[..., dict] | None = None
     # Optional manager directives from the pre-run interview. None = unconstrained.
     preferences: Any = None
+    # Every package `evaluate_trade` priced, in structured form. The scoring is
+    # deterministic, so this is enough to pick a recommendation WITHOUT the model:
+    # see `best_evaluated_package`.
+    evaluations: list[dict] = field(default_factory=list)
 
     # ---- lazy builders -------------------------------------------------
 
@@ -540,6 +544,21 @@ class TradeToolContext(ToolContext):
                 f"  Starting-lineup impact this week: "
                 f"{ev.roster_impact.before_total:.1f} → {ev.roster_impact.after_total:.1f} "
                 f"({ev.roster_impact.delta:+.1f})")
+
+        self.evaluations.append({
+            "send_player_ids": list(send_ids),
+            "receive_player_ids": list(receive_ids),
+            "send_names": [idx.get(i, {}).get("name", i) for i in send_ids],
+            "receive_names": [idx.get(i, {}).get("name", i) for i in receive_ids],
+            "counterparty_team_id": tool_input.get("counterparty_team_id"),
+            "send_value": ev.send_value,
+            "receive_value": ev.receive_value,
+            "ev_delta": ev.ev_delta,
+            "fairness": ev.fairness,
+            "verdict": ev.verdict.upper(),
+            "lineup_delta": ev.roster_impact.delta if ev.roster_impact else 0.0,
+            "summary": "\n".join(lines),
+        })
         return "\n".join(lines)
 
     def _tool_get_matchup_analysis(self, tool_input: dict) -> str:
@@ -718,3 +737,44 @@ def _default_injury_fn(players: list[dict]) -> dict[str, dict]:
 def _default_news_fn(player_names: list[str]) -> dict[str, dict]:
     from fantasy_gm.agent.subagents.news import interpret_news_batch
     return interpret_news_batch(player_names)
+
+
+# ---------------------------------------------------------------------------
+# Deterministic package selection
+# ---------------------------------------------------------------------------
+
+# A package the other owner would plausibly accept. Below this the deal is a
+# fleece and gets declined in real leagues, so it is not a recommendation.
+_MIN_FAIRNESS = 0.70
+# Require a real gain, not rounding noise, before recommending a trade.
+_MIN_EV_DELTA = 50.0
+
+
+def acceptable_packages(evaluations: list[dict], preferences: Any = None,
+                        names: dict[str, str] | None = None) -> list[dict]:
+    """Rank the priced packages worth recommending, best first.
+
+    The scoring is already deterministic, so choosing among evaluated packages
+    needs no model call. Keeps only deals that gain real value AND are balanced
+    enough that the counterparty would plausibly accept, then sorts by gain.
+
+    Packages that contradict the manager's directives are excluded outright —
+    unlike the model path, where a violation is surfaced as a warning, nothing
+    here can explain itself, so it must not quietly propose something the
+    manager ruled out.
+    """
+    viable = []
+    for ev in evaluations:
+        if ev.get("fairness", 0.0) < _MIN_FAIRNESS:
+            continue
+        if ev.get("ev_delta", 0.0) < _MIN_EV_DELTA:
+            continue
+        if preferences is not None and not preferences.is_empty():
+            if preferences.violations(ev.get("send_player_ids", []),
+                                      ev.get("receive_player_ids", []),
+                                      names or {}):
+                continue
+        viable.append(ev)
+    # Best gain first; break ties on fairness so the easier sell wins.
+    return sorted(viable, key=lambda e: (e.get("ev_delta", 0.0),
+                                         e.get("fairness", 0.0)), reverse=True)

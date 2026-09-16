@@ -504,3 +504,124 @@ def test_subagent_overshoot_still_leaves_a_turn_to_decide(ctx):
     assert ctx.llm_calls > ctx.llm_budget          # the overshoot really happened
     assert not record.recommendation.get("truncated")
     assert record.recommendation["trades"][0]["receive_player_ids"] == ["rb_strong"]
+
+
+# ---- Deterministic selection when the model never submits -----------------
+
+@pytest.fixture
+def valued_ctx(ctx):
+    """The ctx fixture is offline, so every asset prices at 0 and no package can
+    clear the gain threshold. Inject a value map so the WR-for-RB consolidation
+    is a genuine, near-balanced upgrade."""
+    from fantasy_gm.core.trade_value import AssetValue
+
+    values = {"wr_spare": 900.0, "rb_strong": 1150.0, "wr1": 2400.0,
+              "rb_weak": 300.0, "qb1": 800.0, "te1": 700.0,
+              "wr_spare2": 500.0, "rb_strong2": 1200.0, "wr3": 1000.0,
+              "te2": 400.0, "qb2": 750.0}
+    ctx._value_map = {
+        pid: AssetValue(pid, info["position"], ros_points=0.0, scarcity=1.0,
+                        value=values.get(pid, 0.0), source="test", note="")
+        for pid, info in ctx.player_index().items()
+    }
+    return ctx
+
+
+def test_deterministic_pick_rescues_a_truncated_run(valued_ctx):
+    """The scoring is already done — a cut-off run should not throw it away."""
+    ctx = valued_ctx
+    record = _looping_agent(2).decide(ctx, verbose=False)
+    rec = record.recommendation
+
+    assert rec["selected_deterministically"] is True
+    assert not rec.get("abstained")
+    assert rec["trades"][0]["receive_player_ids"] == ["rb_strong"]
+    assert "cut off" in rec["reason"]
+    # Confidence is capped — nothing here carries model judgment.
+    assert 0 < record.confidence <= 0.5
+
+
+def test_deterministic_pick_ranks_by_gain(ctx):
+    from fantasy_gm.agent.trade.tools import acceptable_packages
+
+    evs = [
+        {"ev_delta": 100.0, "fairness": 0.90, "send_player_ids": [], "receive_player_ids": []},
+        {"ev_delta": 900.0, "fairness": 0.80, "send_player_ids": [], "receive_player_ids": []},
+        {"ev_delta": 400.0, "fairness": 0.95, "send_player_ids": [], "receive_player_ids": []},
+    ]
+    ranked = acceptable_packages(evs)
+    assert [e["ev_delta"] for e in ranked] == [900.0, 400.0, 100.0]
+
+
+def test_deterministic_pick_rejects_fleeces_and_noise(ctx):
+    from fantasy_gm.agent.trade.tools import acceptable_packages
+
+    evs = [
+        {"ev_delta": 5000.0, "fairness": 0.20, "send_player_ids": [], "receive_player_ids": []},
+        {"ev_delta": 10.0, "fairness": 0.99, "send_player_ids": [], "receive_player_ids": []},
+        {"ev_delta": -500.0, "fairness": 0.95, "send_player_ids": [], "receive_player_ids": []},
+    ]
+    # A lopsided steal nobody accepts, rounding noise, and a loss — none qualify.
+    assert acceptable_packages(evs) == []
+
+
+def test_deterministic_pick_honours_the_managers_brief(ctx):
+    """Unlike the model path, this cannot explain itself — so it must not
+    propose a player the manager ruled out."""
+    from fantasy_gm.agent.trade.preferences import TradePreferences
+    from fantasy_gm.agent.trade.tools import acceptable_packages
+
+    ev = {"ev_delta": 900.0, "fairness": 0.90,
+          "send_player_ids": ["wr1"], "receive_player_ids": ["rb_strong"]}
+    prefs = TradePreferences(offerable_ids=["wr_spare"])      # wr1 is off-limits
+    assert acceptable_packages([ev], prefs, {}) == []
+    assert acceptable_packages([ev], TradePreferences(), {}) == [ev]
+
+
+def test_truncation_with_no_viable_package_still_abstains(ctx):
+    """No cherry-picking: if nothing qualifies, report the truncation honestly."""
+    class _BadTradesOnly:
+        def __init__(self):
+            self.calls = 0
+
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def invoke(self, messages):
+            self.calls += 1
+            return AIMessage(content="", tool_calls=[{
+                "name": "evaluate_trade",
+                # Sending a starter for a weak bench player: a clear loss.
+                "args": {"send_player_ids": ["wr1"],
+                         "receive_player_ids": ["te2"],
+                         "counterparty_team_id": "3"},
+                "id": f"t{self.calls}"}])
+
+    tmp = Path(tempfile.mkdtemp()) / "cp.db"
+    record = TradeGraphAgent(AgentConfig(max_llm_calls=2), llm=_BadTradesOnly(),
+                             checkpoint_path=tmp).decide(ctx, verbose=False)
+    assert record.recommendation["truncated"] is True
+    assert record.confidence == 0.0
+
+
+def test_final_tool_choice_follows_the_evidence(ctx):
+    from fantasy_gm.agent.trade.graph import TradeGraphAgent as TGA
+
+    agent = TGA(AgentConfig())
+    assert agent.final_tool_choice(ctx) == "abstain"        # nothing priced yet
+    ctx.evaluations.append({"ev_delta": 900.0, "fairness": 0.9,
+                            "send_player_ids": [], "receive_player_ids": []})
+    assert agent.final_tool_choice(ctx) == "propose_trades"
+
+
+def test_renderer_marks_a_deterministic_pick(capsys):
+    from fantasy_gm.memo.cli import _render_trade_packages
+
+    rec = _record_with({"selected_deterministically": True, "trades": [{
+        "counterparty_team_id": "3", "send_names": ["A"], "receive_names": ["B"],
+        "rationale": "Computed value gain +900", "counterparty_pitch": "Not drafted",
+        "confidence": 0.45}]}, "Picked by scoring.")
+    _render_trade_packages(rec)
+    out = capsys.readouterr().out
+    assert "PICKED BY SCORING, NOT BY THE AGENT" in out
+    assert "+900" in out

@@ -100,6 +100,13 @@ def _render_trade_packages(record: DecisionRecord) -> None:
     if rec.get("abstained"):
         _render_no_recommendation(record, rec)
         return
+    if rec.get("selected_deterministically"):
+        # The human must know this was scored, not reasoned about — no model
+        # vetted the fit, and there is no counterparty pitch.
+        print("\n  ⓘ  PICKED BY SCORING, NOT BY THE AGENT")
+        print("     The run was cut off before it submitted; these are the "
+              "best-scoring\n     packages it had already priced. No written "
+              "rationale or pitch.")
     print(f"\n  Confidence: {record.confidence:.0%}\n")
     print(f"  Memo:\n  {record.memo}\n")
     trades = rec.get("trades", [])
