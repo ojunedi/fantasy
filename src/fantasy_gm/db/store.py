@@ -139,6 +139,13 @@ class DecisionStore:
         ).fetchall()
         return [self._row_to_record(r) for r in rows]
 
+    def list_recent(self, limit: int = 50) -> list[DecisionRecord]:
+        """Most recent decisions first, across every week and season."""
+        rows = self._conn.execute(
+            "SELECT * FROM decisions ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [self._row_to_record(r) for r in rows]
+
     def save_scorecard(self, scorecard: WeeklyScorecard) -> None:
         self._conn.execute(
             """INSERT OR REPLACE INTO scorecards VALUES (
