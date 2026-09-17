@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Week {{ d.summary.week }} decision · Fantasy GM{% endblock %}
+
+{% block content %}
+<div class="section__head">
+  <h2>Week {{ d.summary.week }} · {{ d.summary.type }}</h2>
+  <span class="stamp">{{ d.summary.created_at | datestamp }}</span>
+</div>
+
+<div class="split">
+  <div class="stack">
+
+    <section class="prose">
+      <p class="note">
+        Confidence {{ d.summary.confidence | pct }}
+        {% if d.summary.human_response %}
+          · you {{ d.summary.human_response }} this
+          {% if d.is_modified %}<span class="tag tag--quiet">modified</span>{% endif %}
+        {% else %}
+          · <span class="tag tag--live">awaiting your call</span>
+        {% endif %}
+      </p>
+      <p class="memo">{{ d.summary.memo }}</p>
+      {% if d.summary.override_reason %}
+      <div class="panel">
+        <strong>Your reason:</strong> {{ d.summary.override_reason }}
+      </div>
+      {% endif %}
+    </section>
+
+    {% if d.changes %}
+    <section>
+      <div class="section__head"><h2>Proposed changes</h2></div>
+      <table>
+        <tbody>
+          {% for c in d.changes %}
+          <tr>
+            <td class="player">
+              Start {{ c.start_in }}{% if c.bench_out %}, bench {{ c.bench_out }}{% endif %}
+              <div class="note">{{ c.reason }}</div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endif %}
+
+    <section id="gate">
+      {% include "partials/gate.html" %}
+    </section>
+
+  </div>
+
+  <div class="stack">
+    {% if d.starters %}
+    <section>
+      <div class="section__head"><h2>Recommended starters</h2></div>
+      <table>
+        <tbody>
+          {% for s in d.starters %}
+          <tr>
+            <td class="player">{{ s.name }}</td>
+            <td class="num proj">{{ s.projection | points(1) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endif %}
+
+    {% if d.what_would_change_this %}
+    <section class="prose">
+      <div class="section__head"><h2>What would change this</h2></div>
+      <p class="note">{{ d.what_would_change_this }}</p>
+    </section>
+    {% endif %}
+
+    {% if d.missing_information %}
+    <section class="prose">
+      <div class="section__head"><h2>Missing information</h2></div>
+      <ul class="note">
+        {% for m in d.missing_information %}<li>{{ m }}</li>{% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    <section>
+      <div class="section__head"><h2>Input staleness</h2></div>
+      <table>
+        <tbody>
+          {% for name, seconds in d.staleness.items() %}
+          <tr>
+            <td>{{ name }}</td>
+            <td class="num">{{ seconds | age }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="note">Measured when the decision was made, not now.</p>
+    </section>
+  </div>
+</div>
+{% endblock %}

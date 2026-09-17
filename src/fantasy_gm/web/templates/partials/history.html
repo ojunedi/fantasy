@@ -1,0 +1,39 @@
+<table>
+  <thead>
+    <tr>
+      <th>Logged</th>
+      <th class="num">Wk</th>
+      <th>Type</th>
+      <th>Outcome</th>
+      <th class="num">Conf.</th>
+      <th>Your call</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in decisions %}
+    <tr>
+      <td>{{ d.created_at | datestamp }}</td>
+      <td class="num">{{ d.week }}</td>
+      <td class="slot">{{ d.type }}</td>
+      <td>
+        {# Truncated is checked first: a cut-off run also carries `abstained`,
+           but the two mean very different things and must not read alike. #}
+        {% if d.truncated %}<span class="tag tag--alert">truncated</span>
+        {% elif d.abstained %}<span class="tag tag--quiet">abstained</span>
+        {% else %}{{ d.starter_count }} starters{% endif %}
+      </td>
+      <td class="num">{{ d.confidence | pct }}</td>
+      <td>
+        {% if d.human_response %}{{ d.human_response }}
+        {% else %}<span class="stamp">—</span>{% endif %}
+      </td>
+      <td class="num"><a href="/decisions/{{ d.id }}">open</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if not decisions %}
+<p class="note">No decisions logged yet. Run a week from the team page.</p>
+{% endif %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Decisions · Fantasy GM{% endblock %}
+
+{% block content %}
+<div class="section__head">
+  <h2>Decisions</h2>
+  {# Deliberately not "{{ count }} logged": this list is capped at 50, and the
+     store holds more. Claiming a total we did not query would be a made-up number. #}
+  <span class="stamp">
+    {% if count < 50 %}{{ count }} logged{% else %}50 most recent{% endif %}
+  </span>
+</div>
+
+{% include "partials/history.html" %}
+{% endblock %}
