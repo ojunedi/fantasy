@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 
 from fantasy_gm.execute.espn_api import ESPNApiExecutor
 from fantasy_gm.web import deps
+from fantasy_gm.web.runs import RunManager
 from fantasy_gm.web.settings import WebSettings
 
 
@@ -32,13 +33,15 @@ def create_app(settings: WebSettings | None = None) -> FastAPI:
     app.state.adapter = deps.build_adapter(settings)
     app.state.executor = ESPNApiExecutor(app.state.adapter)
     app.state.reads = deps.ReadCache(settings.read_ttl_seconds)
+    app.state.runs = RunManager()
     app.state.templates = create_templates(settings)
 
     app.mount("/static", StaticFiles(directory=str(settings.static_dir)), name="static")
 
-    from fantasy_gm.web.routes import pages, partials
+    from fantasy_gm.web.routes import pages, partials, runs_routes
     app.include_router(pages.router)
     app.include_router(partials.router)
+    app.include_router(runs_routes.router)
 
     from fantasy_gm.web.errors import install_error_handlers
     install_error_handlers(app)

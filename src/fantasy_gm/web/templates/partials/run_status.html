@@ -1,0 +1,16 @@
+<div class="run__status">
+  {% if run.status == "running" %}
+    <span class="tag tag--live pulse">running</span>
+    <span class="note">Week {{ run.week }} lineup</span>
+  {% elif run.status == "done" %}
+    <span class="tag tag--chyron">done</span>
+    {% if run.decision_id %}
+    <a href="/decisions/{{ run.decision_id }}">Review and approve</a>
+    {% endif %}
+  {% elif run.status == "cancelled" %}
+    <span class="tag tag--quiet">stopped</span>
+  {% else %}
+    <span class="tag tag--alert">failed</span>
+    <span class="note">{{ run.error }}</span>
+  {% endif %}
+</div>

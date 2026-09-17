@@ -1,0 +1,67 @@
+{# One trace row. Rendered per event, newline-stripped, and pushed down the SSE
+   stream — which is why the client needs no hand-written JavaScript at all. #}
+{% set e = event %}
+{% if e.kind == "start" %}
+<div class="trace__row">
+  <span class="trace__mark">·</span>
+  <span class="trace__name">run started</span>
+  <span class="trace__detail">{{ e.label }}</span>
+</div>
+{% elif e.kind == "posture" %}
+<div class="trace__row">
+  <span class="trace__mark">·</span>
+  <span class="trace__name">posture</span>
+  <span class="trace__detail">{{ e.posture | upper }} — {{ e.rationale }}</span>
+</div>
+{% elif e.kind == "ai_text" %}
+<div class="trace__row">
+  <span class="trace__mark">✦</span>
+  <span class="trace__name">thinking</span>
+  <span class="trace__detail">{{ e.display }}</span>
+</div>
+{% elif e.kind == "tool_call" %}
+<div class="trace__row">
+  <span class="trace__mark">→</span>
+  <span class="trace__name">{{ e.name }}</span>
+  <span class="trace__detail {{ 'trace__detail--block' if e.block else '' }}">{{ e.display }}</span>
+</div>
+{% elif e.kind == "tool_result" %}
+<div class="trace__row">
+  <span class="trace__mark {{ 'trace__mark--done' if e.terminal else '' }}">{{ "✓" if e.terminal else "←" }}</span>
+  <span class="trace__name {{ 'trace__name--terminal' if e.terminal else '' }}">{{ e.name }}</span>
+  <span class="trace__detail {{ 'trace__detail--block' if e.block else '' }}">{{ e.display }}</span>
+</div>
+{% elif e.kind == "no_response" %}
+<div class="trace__row">
+  <span class="trace__mark trace__mark--warn">⚠</span>
+  <span class="trace__name">no response</span>
+  <span class="trace__detail">The model returned neither a tool call nor any text
+    (finish_reason={{ e.finish_reason }}).</span>
+</div>
+{% elif e.kind == "summary" %}
+<div class="trace__row trace__row--summary">
+  <span class="trace__mark {{ 'trace__mark--done' if e.reached_terminal else 'trace__mark--warn' }}">
+    {{ "✓" if e.reached_terminal else "⚠" }}</span>
+  <span class="trace__name">{{ "%.0f" % e.elapsed }}s</span>
+  <span class="trace__detail">
+    {{ e.tool_count }} tool call{{ "" if e.tool_count == 1 else "s" }}.
+    {% if e.reached_terminal %}Reached a recommendation.
+    {% else %}No terminal tool — the run was truncated and has no recommendation.{% endif %}
+    {% if e.failed_count %}
+      {{ e.failed_count }} rejected call{{ "" if e.failed_count == 1 else "s" }}
+      ({{ e.failed_names | join(", ") }}).
+    {% endif %}
+  </span>
+</div>
+{% elif e.kind in ("done", "error", "cancelled") %}
+<div class="trace__row trace__row--summary">
+  <span class="trace__mark {{ 'trace__mark--done' if e.kind == 'done' else 'trace__mark--warn' }}">
+    {{ "✓" if e.kind == "done" else "⚠" }}</span>
+  <span class="trace__name">{{ e.kind }}</span>
+  <span class="trace__detail">
+    {% if e.kind == "done" %}Decision logged.
+    {% elif e.kind == "cancelled" %}You stopped this run.
+    {% else %}{{ e.error }}{% endif %}
+  </span>
+</div>
+{% endif %}

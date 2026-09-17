@@ -1,0 +1,27 @@
+{# The whole run: status header plus the trace. On a reload this renders every
+   buffered event, then reconnects from the last seq it already has. #}
+<div id="run-{{ run.id }}"
+     {% if run.status == "running" %}
+     hx-ext="sse"
+     sse-connect="/runs/{{ run.id }}/stream?after={{ run.last_seq }}"
+     sse-close="close"
+     {% endif %}>
+
+  <div class="run__head">
+    <div id="run-status" {% if run.status == "running" %}sse-swap="status"{% endif %}>
+      {% include "partials/run_status.html" %}
+    </div>
+    {% if run.status == "running" %}
+    <button class="btn btn--quiet btn--small"
+            hx-post="/runs/{{ run.id }}/cancel"
+            hx-target="#run-panel" hx-swap="innerHTML">Stop</button>
+    {% endif %}
+  </div>
+
+  <div class="trace" id="run-trace"
+       {% if run.status == "running" %}sse-swap="trace" hx-swap="beforeend"{% endif %}>
+    {% for event in run.events %}
+      {% include "partials/trace.html" %}
+    {% endfor %}
+  </div>
+</div>
