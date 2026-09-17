@@ -1,4 +1,4 @@
-.PHONY: test lint backtest run-week propose-trades install clean
+.PHONY: test test-core test-web lint backtest run-week propose-trades install web clean
 
 UV := $(HOME)/.local/bin/uv
 
@@ -11,8 +11,11 @@ test:
 test-core:
 	$(UV) run pytest tests/core/ -v --tb=short
 
+test-web:
+	$(UV) run pytest tests/web/ -v --tb=short
+
 lint:
-	$(UV) run python -m py_compile src/fantasy_gm/models.py src/fantasy_gm/core/*.py src/fantasy_gm/adapters/*.py src/fantasy_gm/eval/*.py src/fantasy_gm/db/*.py src/fantasy_gm/signals/*.py src/fantasy_gm/signals/sources/*.py src/fantasy_gm/agent/*.py src/fantasy_gm/agent/subagents/*.py src/fantasy_gm/agent/trade/*.py src/fantasy_gm/execute/*.py src/fantasy_gm/memo/*.py
+	$(UV) run python -m py_compile src/fantasy_gm/models.py src/fantasy_gm/core/*.py src/fantasy_gm/adapters/*.py src/fantasy_gm/eval/*.py src/fantasy_gm/db/*.py src/fantasy_gm/signals/*.py src/fantasy_gm/signals/sources/*.py src/fantasy_gm/agent/*.py src/fantasy_gm/agent/subagents/*.py src/fantasy_gm/agent/trade/*.py src/fantasy_gm/execute/*.py src/fantasy_gm/memo/*.py src/fantasy_gm/web/*.py src/fantasy_gm/web/routes/*.py
 	@echo "Syntax OK"
 
 backtest:
@@ -23,6 +26,9 @@ run-week:
 
 propose-trades:
 	$(UV) run python -m fantasy_gm.cli propose-trades --week $(or $(WEEK),1) --season $(or $(SEASON),2026)
+
+web:
+	$(UV) run uvicorn fantasy_gm.web.app:create_app --factory --reload --host 127.0.0.1 --port 8000 --workers 1
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
