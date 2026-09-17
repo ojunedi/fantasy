@@ -1,0 +1,15 @@
+<div class="banner prose">
+  <h2>ESPN needs re-authenticating</h2>
+  <p>{{ message }}</p>
+  <ol>
+    {% for step in steps %}
+    <li>{{ step }}</li>
+    {% endfor %}
+  </ol>
+  {% if detail %}
+  <details>
+    <summary>What ESPN returned</summary>
+    <pre>{{ detail }}</pre>
+  </details>
+  {% endif %}
+</div>

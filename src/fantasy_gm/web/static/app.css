@@ -1,0 +1,434 @@
+/* Fantasy GM — bright sports broadcast.
+   White, high-contrast, condensed type, hard edges.
+   Colour only ever encodes meaning; it never decorates. */
+
+:root {
+  --paper:  #FFFFFF;
+  --field:  #EDF1EC;   /* panel backing — turf under lights */
+  --black:  #000000;   /* headlines and numerals, as chyrons are */
+  --slate:  #41504C;   /* body copy, secondary data */
+  --chyron: #002E5D;   /* the score bar, primary buttons */
+  --live:   #FFC300;   /* live/running state only */
+  --alert:  #D0021B;   /* OUT / injury / illegal lineup */
+  --rule:   #CDD6D1;   /* hairlines */
+
+  --condensed: "Saira Condensed", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "Saira", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --gutter: 28px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--slate);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+h1, h2, h3, .condensed {
+  font-family: var(--condensed);
+  font-weight: 700;
+  color: var(--black);
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+a { color: var(--chyron); text-decoration: none; border-bottom: 1px solid var(--rule); }
+a:hover { border-bottom-color: var(--chyron); }
+
+/* ---------------------------------------------------------------- chyron */
+/* The one bold thing on the page. Full bleed, zero radius. */
+
+.chyron {
+  background: var(--chyron);
+  color: var(--paper);
+  padding: 18px var(--gutter) 14px;
+}
+
+.chyron__inner { max-width: 1240px; margin: 0 auto; }
+
+.chyron__score {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+  gap: 20px;
+}
+
+.chyron__side { display: flex; align-items: baseline; gap: 14px; min-width: 0; }
+.chyron__side--away { justify-content: flex-end; }
+
+.chyron__team {
+  font-family: var(--condensed);
+  font-weight: 600;
+  font-size: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chyron__team--mine { font-weight: 700; }
+
+.chyron__points {
+  font-family: var(--condensed);
+  font-weight: 700;
+  font-size: 64px;
+  line-height: 0.9;
+  color: var(--paper);
+}
+
+.chyron__vs {
+  font-family: var(--condensed);
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+/* The margin bar. Not a fake win probability — there is no such function in
+   this repo. It shows the projected margin, which we actually have. */
+.chyron__margin { margin-top: 14px; }
+
+.chyron__bar {
+  position: relative;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.chyron__bar span {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: var(--paper);
+}
+
+.chyron__bar::before {   /* the centre tick: an even matchup */
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.chyron__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 8px;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+}
+
+.chyron__meta strong { font-family: var(--condensed); font-weight: 600; color: var(--paper); }
+
+/* ------------------------------------------------------------------- nav */
+
+.nav {
+  border-bottom: 1px solid var(--rule);
+  padding: 0 var(--gutter);
+}
+.nav__inner { max-width: 1240px; margin: 0 auto; display: flex; gap: 22px; }
+
+.nav a {
+  font-family: var(--condensed);
+  font-weight: 600;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--slate);
+  padding: 11px 0;
+  border-bottom: 3px solid transparent;
+}
+.nav a:hover { color: var(--black); }
+.nav a[aria-current="page"] { color: var(--black); border-bottom-color: var(--chyron); }
+
+/* ---------------------------------------------------------------- layout */
+
+.page { max-width: 1240px; margin: 0 auto; padding: 26px var(--gutter) 72px; }
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+}
+
+.stack > * + * { margin-top: 34px; }
+
+.prose { max-width: 72ch; }
+
+.section__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  border-bottom: 2px solid var(--black);
+  padding-bottom: 5px;
+  margin-bottom: 0;
+}
+
+.section__head h2 { font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* Staleness is always visible: a one-hour-old projection changes what you'd do. */
+.stamp {
+  font-size: 13px;
+  color: var(--slate);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.note { font-size: 13px; color: var(--slate); }
+
+/* ---------------------------------------------------------------- tables */
+/* Hairline-ruled on white. No cards, no shadows, no rounded corners. */
+
+table { width: 100%; border-collapse: collapse; }
+
+thead th {
+  font-family: var(--condensed);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--slate);
+  text-align: left;
+  padding: 9px 10px 7px 0;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+
+tbody td {
+  padding: 9px 10px 9px 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: baseline;
+}
+
+td:last-child, th:last-child { padding-right: 0; }
+
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.slot {
+  font-family: var(--condensed);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.07em;
+  color: var(--black);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.player { color: var(--black); font-weight: 500; }
+.team-opp { font-size: 13px; opacity: 0.8; white-space: nowrap; }
+
+.proj { color: var(--black); font-weight: 500; }
+.delta--up { color: var(--chyron); font-weight: 500; }
+.delta--down { color: var(--alert); font-weight: 500; }
+
+.status--out, .status--ir, .status--suspended { color: var(--alert); font-weight: 600; }
+.status--questionable, .status--doubtful { color: var(--slate); font-weight: 600; }
+
+/* The bench divider is structural, so it is a rule, not a heading. */
+tbody tr.divider td {
+  border-bottom: 2px solid var(--black);
+  padding-top: 20px;
+  font-family: var(--condensed);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--black);
+}
+
+tr.is-mine td { background: var(--field); }
+tr.is-swap td { box-shadow: inset 3px 0 0 var(--chyron); }
+
+/* An in-cell bar: points-for, read across the standings at a glance. */
+.bar {
+  display: block;
+  height: 4px;
+  background: var(--chyron);
+  min-width: 1px;
+}
+.bar--muted { background: var(--rule); }
+
+/* --------------------------------------------------------------- buttons */
+
+.btn {
+  font-family: var(--body);
+  font-weight: 500;
+  font-size: 15px;
+  background: var(--chyron);
+  color: var(--paper);
+  border: 1px solid var(--chyron);
+  border-radius: 0;
+  padding: 11px 20px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+.btn:hover { background: #003D7A; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+.btn--quiet { background: transparent; color: var(--chyron); }
+.btn--quiet:hover { background: var(--field); }
+
+.btn--danger { background: var(--alert); border-color: var(--alert); color: var(--paper); }
+.btn--danger:hover { background: #A80116; }
+
+.btn--small { font-size: 13px; padding: 7px 13px; }
+
+.btn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+input[type="text"], textarea, select {
+  font-family: var(--body);
+  font-size: 15px;
+  color: var(--black);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  padding: 10px 11px;
+  width: 100%;
+}
+input[type="text"]:focus, textarea:focus, select:focus {
+  outline: 2px solid var(--chyron);
+  outline-offset: -2px;
+  border-color: var(--chyron);
+}
+
+label { font-size: 13px; color: var(--slate); display: block; margin-bottom: 5px; }
+
+fieldset { border: 0; padding: 0; margin: 0; }
+
+/* ----------------------------------------------------------------- state */
+
+.tag {
+  font-family: var(--condensed);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.tag--live { background: var(--live); color: var(--black); }
+.tag--alert { background: var(--alert); color: var(--paper); }
+.tag--chyron { background: var(--chyron); color: var(--paper); }
+.tag--quiet { background: var(--field); color: var(--slate); }
+
+.banner {
+  border-left: 4px solid var(--alert);
+  background: var(--field);
+  padding: 14px 18px;
+}
+.banner h2 { font-size: 20px; margin-bottom: 4px; }
+.banner--info { border-left-color: var(--chyron); }
+
+.panel { background: var(--field); padding: 18px 20px; }
+
+/* ----------------------------------------------------------------- trace */
+/* The one orchestrated moment on the site: the panel opening and rows
+   arriving as the agent works. Everything else is still. */
+
+.trace {
+  border-top: 1px solid var(--rule);
+  margin-top: 0;
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+.trace__row {
+  display: grid;
+  grid-template-columns: 18px minmax(120px, auto) minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
+  animation: trace-in 220ms ease-out both;
+}
+
+@keyframes trace-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.trace__mark { color: var(--slate); font-size: 13px; }
+.trace__mark--done { color: var(--chyron); font-weight: 600; }
+.trace__mark--warn { color: var(--alert); }
+
+.trace__name {
+  font-family: var(--condensed);
+  font-weight: 600;
+  color: var(--black);
+  letter-spacing: 0.02em;
+}
+.trace__name--terminal { text-decoration: underline; text-underline-offset: 3px; }
+
+.trace__detail {
+  font-size: 13px;
+  color: var(--slate);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trace__detail--block { white-space: pre-wrap; }
+
+.trace__row--summary .trace__detail { white-space: normal; color: var(--black); }
+
+.run__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  padding: 12px 0 10px;
+}
+
+.run__status { display: flex; align-items: baseline; gap: 10px; }
+
+.pulse { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.45; } }
+
+details > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--chyron);
+  padding: 6px 0;
+}
+details pre {
+  font-family: var(--body);
+  font-size: 13px;
+  background: var(--field);
+  padding: 12px 14px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+.memo { color: var(--black); white-space: pre-wrap; }
+
+.htmx-request .hide-when-loading { display: none; }
+.hide { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .trace__row { animation: none; }
+  .pulse { animation: none; }
+  * { scroll-behavior: auto !important; }
+}
+
+@media (max-width: 900px) {
+  :root { --gutter: 16px; }
+  .split { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+  .chyron__points { font-size: 44px; }
+  .chyron__team { font-size: 15px; }
+  .chyron__score { gap: 10px; }
+  .nav__inner { gap: 16px; overflow-x: auto; }
+}

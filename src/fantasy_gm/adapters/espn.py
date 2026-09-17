@@ -186,6 +186,15 @@ class ESPNAdapter(FantasyPlatform):
             regular_season_weeks=regular_weeks,
         )
 
+    def get_current_week(self, season: int) -> int:
+        """The league's live scoring period, straight off ESPN's payload.
+
+        Read passthrough, not a computation: deriving "this week" from a season
+        start date would be a fabricated number the moment ESPN shifts a period.
+        """
+        data = self._fetch(season, params={"view": "mSettings"})
+        return int(data.get("scoringPeriodId") or 1)
+
     def get_roster(self, team_id: str, week: int, season: int, fresh: bool = False) -> Roster:
         rosters = self.get_all_rosters(week=week, season=season, fresh=fresh)
         for r in rosters:

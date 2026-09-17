@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Fantasy GM{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+{# Google Fonts with a system condensed fallback in app.css, so the page still
+   reads correctly offline. #}
+<link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;500&family=Saira+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/htmx.min.js" defer></script>
+<script src="/static/sse.js" defer></script>
+</head>
+<body>
+
+{% block chyron %}{% endblock %}
+
+<nav class="nav">
+  <div class="nav__inner">
+    <a href="/team" {% if active == "team" %}aria-current="page"{% endif %}>My team</a>
+    <a href="/league" {% if active == "league" %}aria-current="page"{% endif %}>League</a>
+    <a href="/history" {% if active == "history" %}aria-current="page"{% endif %}>Decisions</a>
+  </div>
+</nav>
+
+<main class="page">
+{% block content %}{% endblock %}
+</main>
+
+</body>
+</html>
