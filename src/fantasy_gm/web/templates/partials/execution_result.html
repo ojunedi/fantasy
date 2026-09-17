@@ -1,0 +1,30 @@
+{% if result.success %}
+<div class="panel">
+  <p>
+    {% if result.dry_run %}
+      <span class="tag tag--quiet">Dry run</span>
+      Nothing was sent. {{ result.message }}
+    {% else %}
+      <span class="tag tag--chyron">Sent to ESPN</span>
+      {{ result.message }}
+    {% endif %}
+  </p>
+  {% if result.dry_run and not result.plan.is_noop %}
+  <p class="note">To send it for real, type LIVE in the box and submit again.</p>
+  <div id="execute-panel">{% include "partials/execute_form.html" %}</div>
+  {% endif %}
+</div>
+{% else %}
+{# The write failed. Mirror the CLI: fall back to doing it by hand. #}
+<div class="banner">
+  <h2>ESPN rejected the write</h2>
+  <p>{{ result.error }}</p>
+  <p>Set this lineup in the ESPN app yourself:</p>
+  <ul>
+    {% for step in result.plan.human_steps %}
+    <li>{{ step }}</li>
+    {% endfor %}
+  </ul>
+</div>
+<div id="execute-panel">{% include "partials/execute_form.html" %}</div>
+{% endif %}

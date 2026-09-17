@@ -148,6 +148,34 @@ def respond(decision_id: str, request: Request,
     return _render_plan(request, plan, executor, decision_id)
 
 
+@router.post("/{decision_id}/execute", response_class=HTMLResponse)
+def execute(decision_id: str, request: Request,
+            confirm: str = Form(default=""),
+            settings: WebSettings = Depends(get_settings),
+            store: DecisionStore = Depends(get_store),
+            executor: Executor = Depends(get_executor)) -> HTMLResponse:
+    """Gate 2. `confirm` must equal the literal `LIVE`, case-sensitive.
+
+    Anything else — including empty, whitespace, "live", or "LIVE " — is a dry
+    run, and is labelled as one rather than treated as an error. Getting this
+    comparison wrong is the only way this application can do real damage, so it
+    is exact-match and nothing else.
+
+    The plan is recomputed here from the stored record: the browser never gets
+    to hand us a set of moves or a request payload.
+    """
+    record = load_decision(store, decision_id)
+    plan = _build_plan(executor, record, settings.team_id)
+
+    live = confirm == "LIVE"
+    result = executor.execute(plan, live=live)
+
+    return request.app.state.templates.TemplateResponse(
+        request, "partials/execution_result.html",
+        {"result": context.result_view(result), "decision_id": decision_id},
+    )
+
+
 @router.post("/{decision_id}/plan", response_class=HTMLResponse)
 def plan_only(decision_id: str, request: Request,
               settings: WebSettings = Depends(get_settings),

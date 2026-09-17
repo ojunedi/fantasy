@@ -1,1 +1,14 @@
-{# Gate 2 lives here. #}
+{# Gate 2. The confirmation string is the literal `LIVE`, case-sensitive —
+   the same gate as memo/cli.py, kept verbatim because this is an irreversible
+   outward-facing write. Anything else, including empty, is a dry run. #}
+<form hx-post="/decisions/{{ decision_id }}/execute"
+      hx-target="#execute-panel" hx-swap="innerHTML">
+  <p>
+    <label for="confirm">Type LIVE to send this to ESPN. Anything else is a dry run.</label>
+    <input type="text" id="confirm" name="confirm" autocomplete="off"
+           placeholder="dry run">
+  </p>
+  <div class="btn-row">
+    <button class="btn btn--danger" type="submit">Send to ESPN</button>
+  </div>
+</form>
