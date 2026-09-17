@@ -23,7 +23,7 @@ import sqlite3
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Callable, TypedDict
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -387,7 +387,14 @@ class GraphAgent(ABC):
                                     {"agent": "agent", END: END})
         return graph.compile(checkpointer=checkpointer)
 
-    def decide(self, ctx: ToolContext, verbose: bool = True) -> DecisionRecord:
+    def decide(self, ctx: ToolContext, verbose: bool = True,
+               emit: Callable[[dict], None] | None = None) -> DecisionRecord:
+        """Run the graph and build the DecisionRecord.
+
+        `emit` receives each trace event as a dict instead of printing it, so a
+        non-terminal caller (the web dashboard) consumes the same stream the CLI
+        does. Passing `emit` implies a traced run.
+        """
         ctx.llm_budget = self.config.max_llm_calls
         self._checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(self._checkpoint_path), check_same_thread=False)
@@ -401,14 +408,14 @@ class GraphAgent(ABC):
                 "configurable": {"thread_id": self.thread_id(ctx)},
             }
             input_msg = {"messages": [HumanMessage(content=self.user_prompt(ctx))]}
-            if verbose:
+            if verbose or emit is not None:
                 from fantasy_gm.agent.tracer import stream_verbose
                 label = (f"{self._llm_description(llm)} · "
                          f"{type(self).__name__} · "
                          f"week {ctx.week} / {ctx.season}")
                 final_state = stream_verbose(
                     app, input_msg, config, self.terminal_tools, label=label,
-                    full=(self.config.trace == "full"))
+                    full=(self.config.trace == "full"), emit=emit)
             else:
                 final_state = app.invoke(input_msg, config=config)
         finally:
