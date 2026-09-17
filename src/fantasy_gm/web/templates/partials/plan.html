@@ -1,0 +1,45 @@
+{# The execution plan — computed, never sent. Pure preview before gate 2. #}
+
+<div class="section__head">
+  <h2>Execution plan</h2>
+  <span class="stamp">{{ executor_name }}</span>
+</div>
+
+{% if plan.is_noop %}
+<div class="panel">
+  <p>Your lineup on ESPN already matches this recommendation — there is nothing to send.</p>
+</div>
+{% else %}
+
+<table>
+  <thead>
+    <tr><th>Player</th><th>From</th><th>To</th></tr>
+  </thead>
+  <tbody>
+    {% for move in plan.moves %}
+    <tr>
+      <td class="player">{{ move.player_name }}</td>
+      <td class="slot">{{ move.from_slot }}</td>
+      <td class="slot">{{ move.to_slot }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% for note in plan.notes %}
+<p class="note">{{ note }}</p>
+{% endfor %}
+
+{% if plan.payload %}
+<details>
+  <summary>The exact request body that would be sent to ESPN</summary>
+  <pre>{{ plan.payload | tojson(indent=2) }}</pre>
+</details>
+{% endif %}
+
+{# Gate 2 — filled in by the execute-gate commit. #}
+<div id="execute-panel">
+  {% include "partials/execute_form.html" %}
+</div>
+
+{% endif %}
