@@ -1,0 +1,30 @@
+<div class="section__head">
+  <h2>This week</h2>
+  <span class="stamp">as of {{ stamp | clock }}</span>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Team</th>
+      <th class="num">W-L</th>
+      <th class="num">PF</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in standings.rows %}
+    <tr class="{{ 'is-mine' if row.is_mine else '' }}">
+      <td class="slot">{{ row.rank }}</td>
+      <td class="player">
+        {{ row.team_name }}
+        {# In-cell bar: points-for against the league leader, read at a glance. #}
+        <span class="bar {{ '' if row.is_mine else 'bar--muted' }}"
+              style="width: {{ '%.1f' % row.bar_pct }}%"></span>
+      </td>
+      <td class="num">{{ row.standing | record }}</td>
+      <td class="num proj">{{ row.points_for | points(1) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

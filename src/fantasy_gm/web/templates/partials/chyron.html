@@ -1,0 +1,45 @@
+<header class="chyron">
+  <div class="chyron__inner">
+  {% if chyron.has_matchup %}
+    <div class="chyron__score">
+      <div class="chyron__side">
+        <span class="chyron__points">{{ chyron.mine.points | points(1) }}</span>
+        <span class="chyron__team chyron__team--mine">{{ chyron.mine.name }}</span>
+      </div>
+      <span class="chyron__vs">{{ "final" if chyron.is_complete else "proj" }}</span>
+      <div class="chyron__side chyron__side--away">
+        <span class="chyron__team">{{ chyron.away.name }}</span>
+        <span class="chyron__points">{{ chyron.away.points | points(1) }}</span>
+      </div>
+    </div>
+
+    {# The margin bar. There is no win-probability function in this repo, so
+       this shows the projected margin, which we actually have. #}
+    <div class="chyron__margin">
+      <div class="chyron__bar">
+        <span style="left: {{ '%.1f' % chyron.bar_left }}%; width: {{ '%.1f' % chyron.bar_width }}%"></span>
+      </div>
+      <div class="chyron__meta">
+        <span>Week {{ chyron.week }} · {{ chyron.season }}</span>
+        <span>
+          {% if chyron.margin is not none %}
+            <strong>{{ chyron.margin | signed(1) }}</strong>
+            {{ "margin" if chyron.is_complete else "projected margin" }}
+          {% else %}
+            no projection yet
+          {% endif %}
+        </span>
+      </div>
+    </div>
+  {% else %}
+    <div class="chyron__score">
+      <div class="chyron__side">
+        <span class="chyron__team chyron__team--mine">{{ chyron.mine.name }}</span>
+      </div>
+      <span class="chyron__vs">week {{ chyron.week }}</span>
+      <div class="chyron__side chyron__side--away"></div>
+    </div>
+    <div class="chyron__meta"><span>No matchup scheduled this week.</span></div>
+  {% endif %}
+  </div>
+</header>

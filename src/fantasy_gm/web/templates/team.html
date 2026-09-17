@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "_macros.html" import player_row, staleness_list with context %}
+{% block title %}My team · Week {{ week }} · Fantasy GM{% endblock %}
+
+{% block chyron %}{% include "partials/chyron.html" %}{% endblock %}
+
+{% block content %}
+<div class="split">
+
+  <div class="stack">
+    <section id="roster-panel">
+      {% include "partials/roster_table.html" %}
+    </section>
+
+    <section id="run-section">
+      <div class="btn-row">
+        <form hx-post="/runs" hx-target="#run-panel" hx-swap="innerHTML">
+          <input type="hidden" name="week" value="{{ week }}">
+          <input type="hidden" name="season" value="{{ season }}">
+          <label style="display:inline-flex; align-items:center; gap:7px; margin:0 14px 0 0;">
+            <input type="checkbox" name="supervised" value="1" style="width:auto;">
+            Supervisor posture first
+          </label>
+          <button class="btn" type="submit">Run week {{ week }} lineup</button>
+        </form>
+        <button class="btn btn--quiet btn--small"
+                hx-post="/partials/refresh"
+                hx-target="#roster-panel"
+                hx-swap="innerHTML">Refresh data</button>
+      </div>
+      {# The trace panel expands in place, right here. #}
+      <div id="run-panel">
+        {% if active_run %}
+          {% include "partials/run_panel.html" %}
+        {% endif %}
+      </div>
+    </section>
+
+    {% if week_decisions %}
+    <section>
+      <div class="section__head"><h2>This week's decisions</h2></div>
+      <table>
+        <thead>
+          <tr><th>Logged</th><th>Type</th><th class="num">Confidence</th><th>Your call</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for d in week_decisions %}
+          <tr>
+            <td>{{ d.created_at | datestamp }}</td>
+            <td class="slot">{{ d.type }}</td>
+            <td class="num">{{ d.confidence | pct }}</td>
+            <td>
+              {% if d.human_response %}{{ d.human_response }}
+              {% else %}<span class="tag tag--quiet">awaiting you</span>{% endif %}
+            </td>
+            <td class="num"><a href="/decisions/{{ d.id }}">open</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endif %}
+  </div>
+
+  <div class="stack">
+    <section id="standings-panel"
+             hx-get="/partials/standings" hx-trigger="load" hx-swap="innerHTML">
+      <div class="section__head"><h2>This week</h2></div>
+      <p class="note">Loading standings…</p>
+    </section>
+
+    <section id="matchups-panel"
+             hx-get="/partials/matchups" hx-trigger="load" hx-swap="innerHTML">
+    </section>
+
+    <section>
+      <div class="section__head"><h2>Data freshness</h2></div>
+      {% if staleness %}
+        {{ staleness_list(staleness) }}
+      {% else %}
+        <p class="note">Signal collection unavailable — the roster and projections
+        above still come straight from ESPN.</p>
+      {% endif %}
+    </section>
+  </div>
+
+</div>
+{% endblock %}

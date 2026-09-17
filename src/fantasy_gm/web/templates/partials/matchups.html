@@ -1,0 +1,26 @@
+<div class="section__head">
+  <h2>Week {{ week }} matchups</h2>
+  <span class="stamp">as of {{ stamp | clock }}</span>
+</div>
+
+{% if matchups.rows %}
+<table>
+  <tbody>
+    {% for game in matchups.rows %}
+      {% for side in game.sides %}
+      <tr class="{{ 'is-mine' if side.is_mine else '' }}">
+        <td class="player">{{ side.team_name }}</td>
+        <td class="num proj">{{ side.points | points(1) }}</td>
+        <td class="num">
+          {% if loop.first %}
+            <span class="stamp">{{ "final" if game.is_complete else "proj" }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="note">No matchups scheduled for week {{ week }}.</p>
+{% endif %}

@@ -1,0 +1,35 @@
+{# Shared row renderers. Slot labels are the leftmost data column, not decoration. #}
+
+{% macro player_row(row, show_opponent=True) %}
+<tr class="{{ 'is-swap' if row.is_swap else '' }}">
+  <td class="slot">{{ row.slot }}</td>
+  <td class="player">
+    {{ row.name }}
+    {% if row.status_label %}
+    <span class="status--{{ row.status }}">{{ row.status_label }}</span>
+    {% endif %}
+  </td>
+  <td class="team-opp">{{ row.nfl_team }}</td>
+  {% if show_opponent %}<td class="team-opp">{{ row.opponent }}</td>{% endif %}
+  <td class="num proj">{{ row.projection | points(1) }}</td>
+  <td class="num">
+    {% if row.optimizer == "start" %}<span class="delta--up">start</span>
+    {% elif row.optimizer == "bench" %}<span class="delta--down">bench</span>
+    {% else %}—{% endif %}
+  </td>
+</tr>
+{% endmacro %}
+
+{% macro staleness_list(rows) %}
+{% if rows %}
+<ul class="note" style="list-style: none; padding: 0; margin: 0;">
+  {% for row in rows %}
+  <li>
+    {{ row.name }} —
+    {% if row.available %}{{ row.age_seconds | age }}{% else %}unavailable{% endif %}
+    {% if row.note %}<span class="stamp">{{ row.note }}</span>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endmacro %}

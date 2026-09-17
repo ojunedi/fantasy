@@ -1,0 +1,27 @@
+{% from "_macros.html" import player_row with context %}
+<div class="section__head">
+  <h2>Rosters</h2>
+  <span class="stamp">week {{ week }} · as of {{ stamp | clock }}</span>
+</div>
+
+{% for team in rosters.teams %}
+<details {% if team.is_mine %}open{% endif %}>
+  <summary>
+    {{ team.team_name }}
+    {% if team.is_mine %}<span class="tag tag--chyron">mine</span>{% endif %}
+    {% if team.owner_name %}<span class="stamp">{{ team.owner_name }}</span>{% endif %}
+  </summary>
+  <table>
+    <thead>
+      <tr><th>Slot</th><th>Player</th><th>Team</th><th class="num">Proj</th><th class="num"></th></tr>
+    </thead>
+    <tbody>
+      {% for row in team.starters %}{{ player_row(row, False) }}{% endfor %}
+      {% if team.bench %}
+      <tr class="divider"><td colspan="5">Bench</td></tr>
+      {% for row in team.bench %}{{ player_row(row, False) }}{% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+</details>
+{% endfor %}

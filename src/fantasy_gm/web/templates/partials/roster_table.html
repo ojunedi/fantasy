@@ -1,0 +1,44 @@
+{% from "_macros.html" import player_row with context %}
+<div class="section__head">
+  <h2>My team</h2>
+  <span class="stamp">
+    {{ view.projected_count }}/{{ view.roster_count }} projected · as of {{ stamps.projections | clock }}
+  </span>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Slot</th>
+      <th>Player</th>
+      <th>Team</th>
+      {% if view.has_opponents %}<th>Opp</th>{% endif %}
+      <th class="num">Proj</th>
+      <th class="num">Optimizer</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in view.starters %}
+      {{ player_row(row, view.has_opponents) }}
+    {% endfor %}
+
+    <tr class="divider">
+      <td colspan="{{ 6 if view.has_opponents else 5 }}">Bench</td>
+    </tr>
+
+    {% for row in view.bench %}
+      {{ player_row(row, view.has_opponents) }}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p class="note">
+  Current lineup projects <strong>{{ view.current_points | points(1) }}</strong>.
+  {% if view.swap_count %}
+    The optimizer's legal best is {{ view.optimal_points | points(1) }} —
+    <strong>{{ view.optimizer_gain | signed(1) }}</strong> from
+    {{ view.swap_count }} swap{{ "" if view.swap_count == 1 else "s" }}.
+  {% else %}
+    The optimizer agrees with it.
+  {% endif %}
+</p>

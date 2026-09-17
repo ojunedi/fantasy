@@ -36,8 +36,9 @@ def create_app(settings: WebSettings | None = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=str(settings.static_dir)), name="static")
 
-    from fantasy_gm.web.routes import pages
+    from fantasy_gm.web.routes import pages, partials
     app.include_router(pages.router)
+    app.include_router(partials.router)
 
     from fantasy_gm.web.errors import install_error_handlers
     install_error_handlers(app)
