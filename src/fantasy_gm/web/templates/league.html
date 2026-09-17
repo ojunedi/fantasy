@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}League · Fantasy GM{% endblock %}
+
+{% block content %}
+<div class="section__head">
+  <h2>League</h2>
+  <span class="stamp">week {{ week }} · {{ season }}</span>
+</div>
+
+{# Standings render server-side for the default tab; the heavier panels
+   lazy-load, so opening /league never waits on twelve roster parses. #}
+<div class="stack">
+  <section id="standings-panel">
+    {% include "partials/standings.html" %}
+  </section>
+
+  <section id="matchups-panel"
+           hx-get="/partials/matchups" hx-trigger="load" hx-swap="innerHTML">
+    <div class="section__head"><h2>Matchups</h2></div>
+    <p class="note">Loading matchups…</p>
+  </section>
+
+  <section id="rosters-panel"
+           hx-get="/partials/rosters" hx-trigger="load" hx-swap="innerHTML">
+    <div class="section__head"><h2>Rosters</h2></div>
+    <p class="note">Loading rosters…</p>
+  </section>
+</div>
+{% endblock %}

@@ -82,10 +82,12 @@ def rosters_partial(request: Request,
     week = reads.current_week(adapter, settings, cache)
     rosters = reads.all_rosters(adapter, cache, week, settings.season)
     projections = reads.projections(adapter, cache, week, settings.season)
+    standings = reads.standings(adapter, cache, settings.season)
     stamp = context.cache_stamp(adapter, settings.season,
                                 {"view": "mRoster", "scoringPeriodId": week})
     return _render(request, "partials/rosters.html", {
-        "rosters": context.rosters_view(rosters, projections, settings.team_id),
+        "rosters": context.rosters_view(rosters, projections, settings.team_id,
+                                        standings),
         "week": week,
         "stamp": stamp,
     })

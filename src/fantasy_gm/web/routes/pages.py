@@ -74,6 +74,23 @@ def build_team_context(request: Request, adapter, settings: WebSettings,
     }
 
 
+@router.get("/league", response_class=HTMLResponse)
+def league(request: Request,
+           adapter: ESPNAdapter = Depends(get_adapter),
+           settings: WebSettings = Depends(get_settings),
+           cache: ReadCache = Depends(get_reads)) -> HTMLResponse:
+    """Standings server-side; matchups and rosters lazy-load as HTMX fragments."""
+    week = reads.current_week(adapter, settings, cache)
+    rows = reads.standings(adapter, cache, settings.season)
+    return request.app.state.templates.TemplateResponse(request, "league.html", {
+        "active": "league",
+        "week": week,
+        "season": settings.season,
+        "standings": context.standings_view(rows, settings.team_id),
+        "stamp": context.cache_stamp(adapter, settings.season, {"view": "mTeam"}),
+    })
+
+
 @router.get("/team", response_class=HTMLResponse)
 def team(request: Request,
          adapter: ESPNAdapter = Depends(get_adapter),

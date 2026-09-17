@@ -233,15 +233,20 @@ def matchups_view(matchups: list[Matchup], standings: list[TeamStanding],
 
 
 def rosters_view(rosters: list[Roster], projections: dict[str, float],
-                 my_team_id: str) -> dict:
-    """Every team's roster, collapsed; starters only when expanded."""
+                 my_team_id: str, standings: list[TeamStanding] | None = None) -> dict:
+    """Every team's roster, collapsed; starters only when expanded.
+
+    As in `chyron_view`, standings supply the real team names — ESPN's mRoster
+    view returns a bare id.
+    """
+    names = {s.team_id: s.team_name for s in (standings or [])}
     out = []
     for roster in sorted(rosters, key=lambda r: int(r.team_id) if r.team_id.isdigit() else 0):
         players = sorted(roster.players, key=_slot_rank)
         out.append({
             "team_id": roster.team_id,
-            "team_name": roster.team_name,
-            "owner_name": roster.owner_name,
+            "team_name": names.get(roster.team_id) or roster.team_name,
+            "owner_name": roster.owner_name if roster.owner_name != "Unknown" else "",
             "is_mine": roster.team_id == my_team_id,
             "starters": [_player_row(rp, projections, {}) for rp in players if rp.is_starter],
             "bench": [_player_row(rp, projections, {}) for rp in players if not rp.is_starter],
