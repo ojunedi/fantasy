@@ -23,10 +23,12 @@ from __future__ import annotations
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from fantasy_gm.agent.subagents.base import default_llm, parse_json_object, _message_text
-
-# Players per model call — see the note in `subagents/news.py`.
-_BATCH_SIZE = 8
+from fantasy_gm.agent.subagents.base import (
+    BATCH_SIZE,
+    default_llm,
+    parse_json_object,
+    _message_text,
+)
 
 _SYSTEM = """\
 You interpret NFL injury information for a fantasy manager. Given several \
@@ -107,8 +109,8 @@ def interpret_injuries(players: list[dict], llm=None) -> dict[str, dict]:
 
     names = list(seen)
     out: dict[str, dict] = {}
-    for start in range(0, len(names), _BATCH_SIZE):
-        chunk = [seen[n] for n in names[start:start + _BATCH_SIZE]]
+    for start in range(0, len(names), BATCH_SIZE):
+        chunk = [seen[n] for n in names[start:start + BATCH_SIZE]]
         out.update(_interpret_chunk(chunk, llm))
     return out
 

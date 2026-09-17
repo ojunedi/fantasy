@@ -23,12 +23,13 @@ from __future__ import annotations
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from fantasy_gm.agent.subagents.base import default_llm, parse_json_object, _message_text
+from fantasy_gm.agent.subagents.base import (
+    BATCH_SIZE,
+    default_llm,
+    parse_json_object,
+    _message_text,
+)
 from fantasy_gm.signals.news import get_nfl_news, tavily_available, web_search
-
-# Players per model call. One call for a whole roster invites truncated or
-# sloppy JSON, so chunk beyond this and keep the per-player token share sane.
-_BATCH_SIZE = 8
 
 _SYSTEM = """\
 You extract fantasy-relevant signal from NFL news about specific players. \
@@ -101,8 +102,8 @@ def interpret_news_batch(
         news_text = _gather_news_text(names, use_web_search)
 
     out: dict[str, dict] = {}
-    for start in range(0, len(names), _BATCH_SIZE):
-        out.update(_interpret_chunk(names[start:start + _BATCH_SIZE], news_text, llm))
+    for start in range(0, len(names), BATCH_SIZE):
+        out.update(_interpret_chunk(names[start:start + BATCH_SIZE], news_text, llm))
     return out
 
 

@@ -116,7 +116,7 @@ def test_batch_tolerates_recapitalized_keys():
 
 def test_batch_chunks_past_the_size_cap():
     from fantasy_gm.agent.subagents import news as news_mod
-    names = [f"Player {i}" for i in range(news_mod._BATCH_SIZE + 1)]
+    names = [f"Player {i}" for i in range(news_mod.BATCH_SIZE + 1)]
     llm = CountingLLM('{"players": {}}')
     out = interpret_news_batch(names, llm=llm, news_text="news")
     assert llm.calls == 2                  # chunked, not one oversized call
@@ -197,11 +197,11 @@ def test_injuries_batch_sends_only_the_fields_we_have():
 
 def test_injuries_batch_chunks_past_the_size_cap():
     from fantasy_gm.agent.subagents import injury as injury_mod
-    players = [_inj(f"P{i}") for i in range(injury_mod._BATCH_SIZE + 1)]
+    players = [_inj(f"P{i}") for i in range(injury_mod.BATCH_SIZE + 1)]
     llm = CountingLLM('{"players": {}}')
     out = interpret_injuries(players, llm=llm)
     assert llm.calls == 2
-    assert len(out) == injury_mod._BATCH_SIZE + 1
+    assert len(out) == injury_mod.BATCH_SIZE + 1
 
 
 def test_injuries_batch_degrades_every_player_on_error():

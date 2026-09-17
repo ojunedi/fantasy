@@ -14,6 +14,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
+# Players per model call, shared by both sub-agents. One call for a whole roster
+# invites truncated or sloppy JSON, so chunk beyond this and keep the per-player
+# token share sane. The trade tools read this to price a batch in LLM calls.
+BATCH_SIZE = 8
+
 
 def default_llm(config=None):
     """Build the configured chat model, or None if that provider has no API key.

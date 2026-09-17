@@ -61,45 +61,48 @@ def _cached(name: str, loader: Callable[[], Any], ttl: int = DEFAULT_TTL):
 # Raw loaders (Polars DataFrames)
 # ---------------------------------------------------------------------------
 
-def load_player_stats(season: int):
+def _nfl():
+    """Import `nflreadpy` on first use.
+
+    It is a heavy import (and pulls the network on a cache miss), so the loaders
+    below call this from inside their `_cached` lambda — a warm cache therefore
+    never imports it at all.
+    """
     import nflreadpy as nfl
-    return _cached(f"player_stats_{season}", lambda: nfl.load_player_stats(season))
+    return nfl
+
+
+def load_player_stats(season: int):
+    return _cached(f"player_stats_{season}", lambda: _nfl().load_player_stats(season))
 
 
 def load_snap_counts(season: int):
-    import nflreadpy as nfl
-    return _cached(f"snap_counts_{season}", lambda: nfl.load_snap_counts(season))
+    return _cached(f"snap_counts_{season}", lambda: _nfl().load_snap_counts(season))
 
 
 def load_ff_opportunity(season: int):
-    import nflreadpy as nfl
-    return _cached(f"ff_opportunity_{season}", lambda: nfl.load_ff_opportunity(season))
+    return _cached(f"ff_opportunity_{season}", lambda: _nfl().load_ff_opportunity(season))
 
 
 def load_schedules(season: int):
-    import nflreadpy as nfl
-    return _cached(f"schedules_{season}", lambda: nfl.load_schedules(season))
+    return _cached(f"schedules_{season}", lambda: _nfl().load_schedules(season))
 
 
 def load_injuries(season: int):
-    import nflreadpy as nfl
-    return _cached(f"injuries_{season}", lambda: nfl.load_injuries(season))
+    return _cached(f"injuries_{season}", lambda: _nfl().load_injuries(season))
 
 
 def load_ff_rankings():
-    import nflreadpy as nfl
-    return _cached("ff_rankings_week", lambda: nfl.load_ff_rankings(type="week"), ttl=3600)
+    return _cached("ff_rankings_week", lambda: _nfl().load_ff_rankings(type="week"), ttl=3600)
 
 
 def load_players():
-    import nflreadpy as nfl
-    return _cached("players", lambda: nfl.load_players())
+    return _cached("players", lambda: _nfl().load_players())
 
 
 def load_ff_playerids():
-    import nflreadpy as nfl
     # ID map changes rarely; cache for a week.
-    return _cached("ff_playerids", lambda: nfl.load_ff_playerids(), ttl=7 * 24 * 3600)
+    return _cached("ff_playerids", lambda: _nfl().load_ff_playerids(), ttl=7 * 24 * 3600)
 
 
 # ---------------------------------------------------------------------------

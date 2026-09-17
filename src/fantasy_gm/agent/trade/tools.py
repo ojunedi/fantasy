@@ -12,12 +12,15 @@ constructor so the graph tests run fully offline.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from fantasy_gm.agent.base import ToolContext
+from fantasy_gm.agent.subagents.base import BATCH_SIZE
 from fantasy_gm.core.game_env import from_schedule_row  # noqa: F401  (available to tools)
 from fantasy_gm.core.matchup import DvpCell, matchup_grade
+from fantasy_gm.core.roster import FLEX_ELIGIBLE, SUPER_FLEX_ELIGIBLE
 from fantasy_gm.core.schedule import playoff_sos, rest_of_season_sos
 from fantasy_gm.core.trade_value import (
     AssetValue,
@@ -25,7 +28,7 @@ from fantasy_gm.core.trade_value import (
     evaluate_trade_for_roster,
 )
 from fantasy_gm.core.usage import usage_summary
-from fantasy_gm.models import Player, Position, Roster
+from fantasy_gm.models import Player, PlayerStatus, Position, Roster
 from fantasy_gm.signals.collector import ESPN_PRO_TEAM_ABBR
 
 TERMINAL_TOOLS = {"propose_trades", "abstain"}
@@ -228,7 +231,6 @@ class TradeToolContext(ToolContext):
 
     def _flex_eligible(self) -> set[Position]:
         """Positions that can fill this league's flex slots."""
-        from fantasy_gm.core.roster import FLEX_ELIGIBLE, SUPER_FLEX_ELIGIBLE
         elig: set[Position] = set()
         for s in self.settings.roster_slots:
             if not s.is_starter:
@@ -764,9 +766,6 @@ class TradeToolContext(ToolContext):
         ACTIVE players are answered deterministically and never reach the LLM —
         there is no injury picture to interpret.
         """
-        from fantasy_gm.agent.subagents.injury import _BATCH_SIZE
-        from fantasy_gm.models import PlayerStatus
-
         pids = tool_input.get("player_ids") or []
         idx = self.player_index()
 
@@ -786,7 +785,7 @@ class TradeToolContext(ToolContext):
             pending_pids.append(pid)
 
         if pending:
-            cost = self._llm_calls_for(len(pending), _BATCH_SIZE)
+            cost = self._llm_calls_for(len(pending), BATCH_SIZE)
             if self.llm_calls + cost > self.llm_budget:
                 for p in pending:
                     lines.append(f"{p['player_name']}: {p['status']} — injury "
@@ -807,8 +806,6 @@ class TradeToolContext(ToolContext):
 
     def _tool_get_player_news(self, tool_input: dict) -> str:
         """Interpret recent news for a batch of players in one sub-agent call."""
-        from fantasy_gm.agent.subagents.news import _BATCH_SIZE
-
         pids = tool_input.get("player_ids") or []
         idx = self.player_index()
 
@@ -822,7 +819,7 @@ class TradeToolContext(ToolContext):
             names.append(info["name"])
 
         if names:
-            cost = self._llm_calls_for(len(names), _BATCH_SIZE)
+            cost = self._llm_calls_for(len(names), BATCH_SIZE)
             if self.llm_calls + cost > self.llm_budget:
                 lines.append("News interpretation skipped for "
                              f"{', '.join(names)} (LLM call budget reached).")
@@ -842,7 +839,6 @@ class TradeToolContext(ToolContext):
         return "\n".join(lines) or "No players requested."
 
     def _tool_propose_trades(self, tool_input: dict) -> str:
-        import json
         idx = self.player_index()
         prefs = self.preferences
         constrained = prefs is not None and not prefs.is_empty()
@@ -875,7 +871,6 @@ class TradeToolContext(ToolContext):
         return json.dumps(enriched)
 
     def _tool_abstain(self, tool_input: dict) -> str:
-        import json
         return json.dumps(tool_input)
 
 

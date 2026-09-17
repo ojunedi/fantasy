@@ -296,12 +296,12 @@ def test_batched_tools_respect_the_remaining_budget(hurt_ctx):
 
 def test_batched_tool_charges_once_per_chunk(hurt_ctx):
     """Beyond the chunk cap the budget must be charged per model call."""
-    from fantasy_gm.agent.subagents.news import _BATCH_SIZE
+    from fantasy_gm.agent.subagents.base import BATCH_SIZE
 
     hurt_ctx.news_fn = lambda names: {n: {"net_outlook": "neutral"} for n in names}
     hurt_ctx.llm_budget = 8
     pids = ["qb1", "rb1", "wr_ok", "te1", "wr_out", "wr_quest"]
-    assert len(pids) <= _BATCH_SIZE
+    assert len(pids) <= BATCH_SIZE
     hurt_ctx.dispatch("get_player_news", {"player_ids": pids})
     assert hurt_ctx.llm_calls == 1              # 6 players, one chunk, one charge
 
