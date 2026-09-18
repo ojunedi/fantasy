@@ -38,3 +38,24 @@ def test_settings_accept_explicit_paths(tmp_path):
     settings = WebSettings(db_path=tmp_path / "d.db", cache_dir=tmp_path / "c")
     assert settings.db_path == tmp_path / "d.db"
     assert settings.cache_dir == tmp_path / "c"
+
+
+def test_favicon_is_served_and_vendored(client):
+    resp = client.get("/static/favicon.svg")
+    assert resp.status_code == 200
+    assert "svg" in resp.headers["content-type"]
+    # Built from the same tokens as the chyron, not a stock glyph.
+    assert "#002E5D" in resp.text
+    assert "#FFC300" in resp.text
+
+
+def test_pages_link_the_favicon(client):
+    assert 'href="/static/favicon.svg"' in client.get("/team").text
+
+
+def test_raster_favicon_fallbacks_exist(client):
+    """Not every context takes an SVG icon."""
+    for path in ("/static/favicon-32.png", "/static/apple-touch-icon.png"):
+        resp = client.get(path)
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/png"

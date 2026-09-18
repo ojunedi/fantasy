@@ -9,6 +9,11 @@
 {# Google Fonts with a system condensed fallback in app.css, so the page still
    reads correctly offline. #}
 <link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;500&family=Saira+Condensed:wght@600;700&display=swap" rel="stylesheet">
+{# SVG first for crispness; the PNG covers anything that will not take one. #}
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="mask-icon" href="/static/favicon.svg" color="#002E5D">
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/htmx.min.js" defer></script>
 <script src="/static/sse.js" defer></script>
