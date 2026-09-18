@@ -1,0 +1,49 @@
+{# trade_history.html — table of past trade decisions.
+   Context: decisions (list of decision_summary dicts with shape key) #}
+
+{% if decisions %}
+<div class="section__head">
+  <h2>Past trade decisions</h2>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Logged</th>
+      <th>Week</th>
+      <th>Shape</th>
+      <th class="num">Confidence</th>
+      <th>Your call</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in decisions %}
+    <tr>
+      <td class="stamp">{{ d.created_at | datestamp }}</td>
+      <td class="note">{{ d.week }}</td>
+      <td>
+        {% if d.shape == "packages" %}
+        <span class="tag tag--chyron">Packages</span>
+        {% elif d.shape == "abstained" %}
+        <span class="tag tag--quiet">Abstained</span>
+        {% elif d.shape == "truncated" %}
+        <span class="tag tag--live" style="color:var(--black);">Truncated</span>
+        {% else %}
+        <span class="tag tag--quiet">{{ d.shape | default('—') }}</span>
+        {% endif %}
+      </td>
+      <td class="num note">{{ d.confidence | pct }}</td>
+      <td>
+        {% if d.human_response %}
+        {{ d.human_response }}
+        {% else %}
+        <span class="tag tag--quiet">awaiting you</span>
+        {% endif %}
+      </td>
+      <td class="num"><a href="/decisions/{{ d.id }}">open</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}

@@ -1,0 +1,54 @@
+{# trade_refused.html — packages the agent considered and chose not to propose.
+   Spine tinted alert. No approve button. #}
+{% from "partials/trade_ledger.html" import ledger %}
+
+{% if refused %}
+<section style="margin-top:34px;">
+  <div class="section__head">
+    <h2>Considered but not proposed</h2>
+    <span class="stamp">{{ refused | length }} package{{ 's' if refused | length != 1 }}</span>
+  </div>
+
+  {% for package in refused %}
+  <div class="trade-refused" style="margin-top:24px; border-top:1px solid var(--rule); padding-top:18px;">
+
+    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:14px;">
+      <p class="note" style="margin:0;">
+        <strong style="color:var(--black);">{{ package.counterparty_name }}</strong>
+        {% if package.counterparty_record %}· {{ package.counterparty_record }}{% endif %}
+      </p>
+      {% if package.confidence is not none %}
+      <span class="stamp">conf {{ package.confidence | pct }}</span>
+      {% endif %}
+    </div>
+
+    {% if package.directive_violations %}
+    <div class="banner" style="margin-top:10px;">
+      <p class="note" style="color:var(--alert); font-weight:600; margin-bottom:4px;">Directive violations</p>
+      <ul class="note" style="margin:0; padding-left:18px;">
+        {% for v in package.directive_violations %}
+        <li>{{ v }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <div style="margin-top:12px;">
+      {{ ledger(package, t.has_values, refused=true) }}
+    </div>
+
+    {% if package.refused_because %}
+    <p class="note" style="margin-top:10px;">
+      <span class="tag tag--alert">Refused</span>
+      {{ package.refused_because }}
+    </p>
+    {% endif %}
+
+    {% if package.rationale %}
+    <p class="prose note" style="margin-top:8px;">{{ package.rationale }}</p>
+    {% endif %}
+
+  </div>
+  {% endfor %}
+</section>
+{% endif %}

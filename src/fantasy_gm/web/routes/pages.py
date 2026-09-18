@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from fantasy_gm.adapters.espn import ESPNAdapter
 from fantasy_gm.db.store import DecisionStore
+from fantasy_gm.models import DecisionType
 from fantasy_gm.web import context, reads
 from fantasy_gm.web.deps import (
     ReadCache,
@@ -111,6 +112,18 @@ def decision_detail(decision_id: str, request: Request,
                     cache: ReadCache = Depends(get_reads),
                     store: DecisionStore = Depends(get_store)) -> HTMLResponse:
     record = load_decision(store, decision_id)
+
+    # A trade decision has a completely different shape — packages, not a
+    # starter list — so it gets its own view rather than being forced through
+    # the lineup template.
+    if record.decision_type == DecisionType.TRADE:
+        from fantasy_gm.web.routes.trades import _decision_context
+        return request.app.state.templates.TemplateResponse(
+            request, "trade_decision_page.html", {
+                "active": "trades",
+                "t": _decision_context(record, adapter, settings, cache),
+            })
+
     # The live roster supplies the id -> name join; if it is unavailable the
     # record's own inputs_snapshot still carries names, so the page renders.
     roster = projections = None

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Week {{ t.summary.week }} trades · Fantasy GM{% endblock %}
+
+{% block content %}
+{% with standalone = True %}
+  {% include "partials/trade_decision.html" %}
+{% endwith %}
+<p class="note trade-decision__back"><a href="/trades">All trades</a></p>
+{% endblock %}

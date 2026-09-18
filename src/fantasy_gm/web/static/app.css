@@ -455,3 +455,239 @@ tr.is-played .proj { opacity: 0.55; }
 }
 
 .stamp.is-live { color: #8A6A00; font-weight: 600; }
+
+/* --------------------------------------------------------------- Trades */
+/* The one bold element: a trade is an exchange across a vertical navy rule.
+   Values right-align toward the spine on the send side, left-align away from
+   it on the receive side so the two totals sit adjacent.
+   Everything else on the page stays hairline-ruled and quiet. */
+
+.ledger {
+  margin: 0;
+}
+
+/* The two-column body: [send side] [spine] [recv side] */
+.ledger__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+  align-items: start;
+  gap: 0;
+}
+
+
+
+/* The spine: a single vertical navy rule */
+.ledger__spine {
+  width: 1px;
+  background: var(--chyron);
+  align-self: stretch;
+  min-height: 32px;
+}
+
+/* Refused variant: spine turns alert */
+.ledger--refused .ledger__spine { background: var(--alert); }
+
+/* Send side: rows push values rightward toward the spine */
+.ledger__side--send {
+  padding-right: 16px;
+}
+
+/* Receive side: rows push values leftward away from the spine */
+.ledger__side--recv {
+  padding-left: 16px;
+}
+
+.ledger__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.ledger__side--send .ledger__row { justify-content: flex-end; text-align: right; }
+.ledger__side--recv .ledger__row { justify-content: flex-start; text-align: left; }
+
+/* Name is the heaviest element */
+.ledger__name {
+  color: var(--black);
+  font-weight: 500;
+}
+
+/* Position abbreviation: secondary */
+.ledger__pos { order: -1; }
+.ledger__side--send .ledger__pos { order: 0; }
+
+/* Value: right-align on send side (toward spine), left on recv */
+.ledger__val {
+  font-family: var(--condensed);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--black);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Totals row: send total | EV delta straddling spine | recv total */
+
+
+
+
+/* EV delta: colour encodes direction, never decoration */
+.ledger__ev {
+  font-family: var(--condensed);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.ledger__ev--gain { color: var(--chyron); }
+.ledger__ev--loss { color: var(--alert); }
+
+/* trade-package section spacing */
+.trade-package {
+  padding-top: 28px;
+  border-top: 2px solid var(--rule);
+  margin-top: 28px;
+}
+.trade-package:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+/* Refused packages: muted spine, no approve button */
+.trade-refused .ledger__spine { background: var(--alert); }
+
+/* Mobile: collapse the spine into a horizontal rule, stack send above recv */
+@media (max-width: 600px) {
+  .ledger__body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+  }
+
+
+  /* Spine becomes a horizontal rule between the two halves */
+  .ledger__spine {
+    width: 100%;
+    height: 1px;
+    min-height: 0;
+    background: var(--chyron);
+    margin: 8px 0;
+  }
+  .ledger--refused .ledger__spine { background: var(--alert); }
+
+  .ledger__side--send { padding-right: 0; }
+  .ledger__side--recv { padding-left: 0; }
+
+  .ledger__side--send .ledger__row { justify-content: flex-start; text-align: left; }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* no animations in trades — nothing to cancel here */
+}
+
+/* Trades — spacing and labels lifted out of inline styles so the tokens stay
+   in one place, as everywhere else on the site. */
+.head__meta {
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--slate);
+}
+.head__meta + .head__meta::before { content: "· "; }
+
+.prose__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--black);
+  margin: 0 0 2px;
+}
+
+.violation__head {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--alert);
+  margin: 0 0 4px;
+}
+
+.trade-package__ledger { margin-top: 14px; }
+.trade-package__violations { margin-top: 14px; }
+.trade-package__prose { margin-top: 14px; }
+.trade-package__action { margin-top: 18px; }
+.trade-package__roster { margin-top: 14px; }
+.trade-package__roster table { margin-top: 8px; }
+
+.trades__decision { margin-top: 40px; }
+.trade-decision__meta { margin-top: 10px; }
+.trade-decision__memo { margin-top: 10px; }
+.trade-decision__reason { margin-top: 12px; }
+.trade-decision__valued {
+  display: block;
+  margin-top: 6px;
+  white-space: normal;   /* it is a sentence, not a column label */
+}
+.trade-decision__banner { margin-top: 16px; }
+.trade-decision__packages { margin-top: 24px; }
+.trade-decision__change { margin-top: 28px; }
+.trade-decision__reject { margin-top: 32px; max-width: 72ch; }
+.trade-decision__reject textarea { margin-bottom: 10px; }
+.trade-decision__error { color: var(--alert); }
+.trade-decision__back { margin-top: 32px; }
+
+/* The brief collapses once there is an analysis to read. */
+.trade-brief__summary {
+  font-family: var(--condensed);
+  font-weight: 700;
+  font-size: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--black);
+  border-bottom: 2px solid var(--black);
+  padding-bottom: 5px;
+  margin-bottom: 14px;
+}
+
+/* Ledger, second cut: each side carries its own label and subtotal so the
+   stacked layout keeps "Out" attached to the players going out. */
+.ledger__label {
+  font-family: var(--condensed);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--slate);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 2px;
+}
+.ledger__side--recv .ledger__label { text-align: right; }
+
+.ledger__subtotal {
+  border-top: 2px solid var(--black);
+  border-bottom: 0;
+  margin-top: 4px;
+  padding-top: 7px;
+  font-family: var(--condensed);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--black);
+}
+
+.ledger__verdict {
+  text-align: center;
+  padding-top: 12px;
+  font-size: 13px;
+}
+
+@media (max-width: 700px) {
+  /* Stacked: the spine becomes the rule between the two halves. */
+  .ledger__label { padding-top: 4px; }
+  .ledger__side--recv .ledger__label { text-align: left; }
+  /* Stacked, the mirrored order (value before name) reads backwards, so put the
+     receive side into the same name-position-value order as the send side. */
+  .ledger__side--recv .ledger__row { flex-direction: row; }
+  .ledger__side--recv .ledger__name { order: 1; }
+  .ledger__side--recv .ledger__pos { order: 2; }
+  .ledger__side--recv .ledger__val { order: 3; margin-left: auto; }
+  .ledger__verdict { text-align: left; }
+}

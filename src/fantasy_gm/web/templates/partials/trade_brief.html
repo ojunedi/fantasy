@@ -1,0 +1,142 @@
+{# trade_brief.html — form to configure and launch a new trade run.
+   POSTs to /runs with kind=trade.
+   Context: brief (trade_brief_view dict), week, season #}
+
+<div class="section__head">
+  <h2>Trade brief</h2>
+  {% if brief.has_values %}
+  <span class="stamp">values loaded</span>
+  {% else %}
+  <span class="tag tag--quiet">no values</span>
+  {% endif %}
+</div>
+
+<form method="post" action="/runs" style="margin-top:18px;">
+  <input type="hidden" name="kind" value="trade">
+  {% if week is defined %}
+  <input type="hidden" name="week" value="{{ week }}">
+  {% endif %}
+  {% if season is defined %}
+  <input type="hidden" name="season" value="{{ season }}">
+  {% endif %}
+
+  {# Positions I want to improve #}
+  <fieldset style="margin-bottom:20px;">
+    <legend style="font-family:var(--condensed); font-weight:700; font-size:15px;
+                   color:var(--black); letter-spacing:0.03em; margin-bottom:8px;">
+      Positions to improve
+    </legend>
+    <div style="display:flex; gap:14px; flex-wrap:wrap;">
+      {% for pos in brief.positions %}
+      <label style="display:inline-flex; align-items:center; gap:5px; margin:0; color:var(--black);">
+        <input type="checkbox" name="want_positions" value="{{ pos.value }}"
+               style="width:auto;" {{ 'checked' if pos.selected }}>
+        {{ pos.label }}
+      </label>
+      {% endfor %}
+    </div>
+  </fieldset>
+
+  {# Players I can offer #}
+  <fieldset style="margin-bottom:20px;">
+    <legend style="font-family:var(--condensed); font-weight:700; font-size:15px;
+                   color:var(--black); letter-spacing:0.03em; margin-bottom:8px;">
+      Players I can offer
+      <span class="note" style="font-weight:400;">
+        ({{ brief.chip_count }} chip{{ 's' if brief.chip_count != 1 }}, {{ brief.roster_count }} total)
+      </span>
+    </legend>
+
+    <label style="display:inline-flex; align-items:center; gap:5px; margin:0 0 10px; color:var(--slate);">
+      <input type="checkbox" id="select-all-depth" style="width:auto;"
+             onchange="document.querySelectorAll('.brief-offerable').forEach(cb => { if (!cb.dataset.chip) cb.checked = this.checked; })">
+      Select all non-chip depth
+    </label>
+
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Player</th>
+          <th class="slot">Pos</th>
+          <th class="slot">Slot</th>
+          {% if brief.has_values %}<th class="num">Value</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in brief.offerable %}
+        <tr class="{{ 'is-played' if p.is_chip else '' }}">
+          <td>
+            <input type="checkbox" class="brief-offerable" name="offerable_ids"
+                   value="{{ p.player_id }}" style="width:auto;"
+                   {{ 'checked' if p.selected }}
+                   {{ 'data-chip=1' if p.is_chip }}>
+          </td>
+          <td class="player">
+            {{ p.name }}
+            {% if p.is_chip %}<span class="tag tag--chyron" style="margin-left:4px;">chip</span>{% endif %}
+            {% if p.is_starter %}<span class="tag tag--quiet" style="margin-left:4px;">starter</span>{% endif %}
+          </td>
+          <td class="slot">{{ p.position }}</td>
+          <td class="slot">{{ p.slot }}</td>
+          {% if brief.has_values %}
+          <td class="num note">{{ p.value | points(0) if p.value is not none else '—' }}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </fieldset>
+
+  {# Target players on other teams #}
+  {% if brief.targets %}
+  <fieldset style="margin-bottom:20px;">
+    <legend style="font-family:var(--condensed); font-weight:700; font-size:15px;
+                   color:var(--black); letter-spacing:0.03em; margin-bottom:8px;">
+      Target players
+    </legend>
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Player</th>
+          <th class="slot">Pos</th>
+          <th>Team</th>
+          {% if brief.has_values %}<th class="num">Value</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in brief.targets %}
+        <tr>
+          <td>
+            <input type="checkbox" name="target_ids" value="{{ p.player_id }}"
+                   style="width:auto;" {{ 'checked' if p.selected }}>
+          </td>
+          <td class="player">{{ p.name }}</td>
+          <td class="slot">{{ p.position }}</td>
+          <td class="note">{{ p.owner_team_name or p.owner_name }}</td>
+          {% if brief.has_values %}
+          <td class="num note">{{ p.value | points(0) if p.value is not none else '—' }}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </fieldset>
+  {% endif %}
+
+  {# Notes for the agent #}
+  <div style="margin-bottom:20px;">
+    <label for="trade-notes" style="font-family:var(--condensed); font-weight:700; font-size:15px;
+                                     color:var(--black); letter-spacing:0.03em; margin-bottom:8px;">
+      Notes
+    </label>
+    <textarea id="trade-notes" name="notes" rows="3"
+              placeholder="E.g. prioritise WR depth, willing to take salary…">{{ brief.notes if brief.notes }}</textarea>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" type="submit">Propose trades for week {{ week if week is defined }}</button>
+  </div>
+
+</form>

@@ -1,0 +1,64 @@
+{# trade_truncated.html — the run was cut off before finishing.
+   Evaluated packages are raw agent text: preformatted, explicitly not recommendations. #}
+
+<div class="banner" style="margin-top:24px;">
+  <h2>Run cut off before finishing</h2>
+  <p class="note" style="margin-top:4px;">
+    {% if t.hit_step_limit %}
+    The agent hit the step limit
+    {% else %}
+    The run was stopped early
+    {% endif %}
+    {% if t.llm_calls is not none and t.llm_budget is not none %}
+    ({{ t.llm_calls }} of {{ t.llm_budget }} LLM calls used)
+    {% elif t.llm_calls is not none %}
+    ({{ t.llm_calls }} LLM calls)
+    {% endif %}
+    after evaluating {{ t.evaluated | length }} package{{ 's' if t.evaluated | length != 1 }}.
+    These are partial notes — they are not recommendations.
+  </p>
+</div>
+
+{% if t.agent_text %}
+<div style="margin-top:18px;">
+  <p class="note" style="font-weight:600; color:var(--black); margin-bottom:6px;">Agent notes</p>
+  <p class="prose note">{{ t.agent_text }}</p>
+</div>
+{% endif %}
+
+{% if t.evaluated %}
+<section style="margin-top:24px;">
+  <div class="section__head">
+    <h2>Partial evaluations</h2>
+    <span class="stamp">not recommendations</span>
+  </div>
+
+  {% for ev in t.evaluated %}
+  <details style="margin-top:16px; border-top:1px solid var(--rule); padding-top:12px;">
+    <summary>
+      {{ ev.counterparty_name }}
+      {% if ev.send %}
+      — send {{ ev.send | map(attribute='name') | join(', ') }}
+      {% endif %}
+      {% if ev.receive %}
+      / receive {{ ev.receive | map(attribute='name') | join(', ') }}
+      {% endif %}
+    </summary>
+    <pre>{{ ev.evaluation_text }}</pre>
+  </details>
+  {% endfor %}
+</section>
+{% endif %}
+
+<div class="btn-row" style="margin-top:24px;">
+  <form method="post" action="/runs">
+    <input type="hidden" name="kind" value="trade">
+    {% if week is defined %}
+    <input type="hidden" name="week" value="{{ week }}">
+    {% endif %}
+    {% if season is defined %}
+    <input type="hidden" name="season" value="{{ season }}">
+    {% endif %}
+    <button class="btn" type="submit">Run trades again</button>
+  </form>
+</div>

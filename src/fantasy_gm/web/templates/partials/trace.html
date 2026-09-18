@@ -7,6 +7,12 @@
   <span class="trace__name">run started</span>
   <span class="trace__detail">{{ e.label }}</span>
 </div>
+{% elif e.kind == "brief" %}
+<div class="trace__row">
+  <span class="trace__mark">·</span>
+  <span class="trace__name">your brief</span>
+  <span class="trace__detail">{{ e.summary }}</span>
+</div>
 {% elif e.kind == "posture" %}
 <div class="trace__row">
   <span class="trace__mark">·</span>

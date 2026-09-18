@@ -1,0 +1,46 @@
+{# trade_needs.html — right-rail position needs table.
+   Context: needs (trade_needs_view dict) #}
+
+<div class="section__head">
+  <h2>My needs</h2>
+  {% if needs.chip_count %}
+  <span class="stamp">{{ needs.chip_count }} chip{{ 's' if needs.chip_count != 1 }}</span>
+  {% endif %}
+</div>
+
+{% if needs.rows %}
+<table style="margin-top:0;">
+  <thead>
+    <tr>
+      <th class="slot">Pos</th>
+      <th>State</th>
+      <th class="num">Best</th>
+      <th class="num">Bar</th>
+      <th class="num">Unfilled</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in needs.rows %}
+    <tr>
+      <td class="slot">{{ row.position }}</td>
+      <td>
+        {% if row.state == "need" %}
+        <span class="tag tag--alert">Need</span>
+        {% elif row.state == "thin" %}
+        <span class="tag tag--live" style="color:var(--black);">Thin</span>
+        {% elif row.state == "surplus" %}
+        <span class="tag tag--quiet">Surplus</span>
+        {% else %}
+        <span class="tag tag--quiet">Ok</span>
+        {% endif %}
+      </td>
+      <td class="num note">{{ row.best | points(0) if row.best is not none else '—' }}</td>
+      <td class="num note">{{ row.bar | points(0) if row.bar is not none else '—' }}</td>
+      <td class="num note">{{ row.unfilled if row.unfilled is not none else '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="note" style="margin-top:10px;">Needs unavailable.</p>
+{% endif %}

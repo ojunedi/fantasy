@@ -1,7 +1,7 @@
 <div class="run__status">
   {% if run.status == "running" %}
     <span class="tag tag--live pulse">running</span>
-    <span class="note">Week {{ run.week }} lineup</span>
+    <span class="note">Week {{ run.week }} {{ run.kind }}</span>
   {% elif run.status == "done" %}
     <span class="tag tag--chyron">done</span>
     {% if run.decision_id %}

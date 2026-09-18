@@ -1,0 +1,35 @@
+{# trade_send_steps.html — the terminal state after approving a package.
+   ESPN cannot auto-send, so these steps are a genuine sequence — ordered list is correct.
+   Context: plan (trade_send_plan_view dict) #}
+
+<div class="section__head">
+  <h2>Send steps</h2>
+</div>
+
+<section style="margin-top:18px;" class="prose">
+
+  {% if plan.send_names and plan.receive_names %}
+  <p>
+    Send <strong>{{ plan.send_names | join(', ') }}</strong>
+    to receive <strong>{{ plan.receive_names | join(', ') }}</strong>.
+  </p>
+  {% endif %}
+
+  {% if plan.human_steps %}
+  <ol class="note" style="padding-left:20px; margin:14px 0 0;">
+    {% for step in plan.human_steps %}
+    <li style="margin-bottom:8px;">{{ step }}</li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="note">No steps available.</p>
+  {% endif %}
+
+  {% if plan.notes %}
+  <div class="panel" style="margin-top:20px;">
+    <p class="note" style="font-weight:600; color:var(--black); margin-bottom:6px;">Pitch</p>
+    <p class="note" style="margin:0; white-space:pre-wrap;">{{ plan.notes }}</p>
+  </div>
+  {% endif %}
+
+</section>

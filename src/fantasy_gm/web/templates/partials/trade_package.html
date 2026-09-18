@@ -1,0 +1,95 @@
+{# trade_package.html — one recommended package: spine + rationale + approve form.
+   Context: package (package dict), t (trade_decision_view dict) #}
+{% from "partials/trade_ledger.html" import ledger %}
+
+<section class="trade-package" id="package-{{ package.index }}">
+
+  {# Package heading: index, counterparty name, record, PF, confidence #}
+  <div class="section__head">
+    <h2>Package {{ package.index }} — with {{ package.counterparty_name }}
+      {% if package.counterparty_record %}
+      <span class="head__meta">{{ package.counterparty_record }}</span>
+      {% endif %}
+      {% if package.counterparty_points_for is not none %}
+      <span class="head__meta">{{ package.counterparty_points_for | points(1) }} PF</span>
+      {% endif %}
+    </h2>
+    {% if package.confidence is not none %}
+    <span class="stamp">conf {{ package.confidence | pct }}</span>
+    {% endif %}
+  </div>
+
+  {# Directive violations — shown before the ledger so you see them immediately #}
+  {% if package.directive_violations %}
+  <div class="banner trade-package__violations">
+    <p class="violation__head">Against your brief</p>
+    <ul class="note">
+      {% for v in package.directive_violations %}
+      <li>{{ v }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {# The spine #}
+  <div class="trade-package__ledger">
+    {{ ledger(package, t.has_values) }}
+  </div>
+
+  {# Rationale and counterparty pitch #}
+  {% if package.rationale %}
+  <div class="trade-package__prose">
+    <p class="prose__label">Why it helps</p>
+    <p class="prose note">{{ package.rationale }}</p>
+  </div>
+  {% endif %}
+
+  {% if package.pitch %}
+  <div class="trade-package__prose">
+    <p class="prose__label">Pitch to them</p>
+    <p class="prose note">{{ package.pitch }}</p>
+  </div>
+  {% endif %}
+
+  {# The other team's roster, so the ask can be checked without leaving here. #}
+  {% if package.counterparty_roster %}
+  <details class="trade-package__roster">
+    <summary>{{ package.counterparty_name }}'s roster ({{ package.counterparty_roster | length }})</summary>
+    <table>
+      <thead>
+        <tr>
+          <th>Player</th><th>Pos</th><th>Team</th>
+          {% if t.has_values %}<th class="num">Value</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in package.counterparty_roster %}
+        <tr>
+          <td class="player">{{ p.name }}</td>
+          <td class="slot">{{ p.position }}</td>
+          <td class="team-opp">{{ p.nfl_team }}</td>
+          {% if t.has_values %}
+          <td class="num proj">{{ p.value | points(0) }}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+
+  {# Approve stays available even with a directive violation: `violations()` is
+     advisory, and the hard gate (`forbidden_sends`) already diverted anything
+     genuinely off-limits into refused_trades. The call is the manager's. #}
+  <div class="btn-row trade-package__action" id="package-{{ package.index }}-action">
+    <form hx-post="/trades/{{ t.summary.id }}/approve/{{ package.index }}"
+          hx-target="#package-{{ package.index }}-action"
+          hx-swap="innerHTML">
+      <button class="btn" type="submit">Approve and get send steps</button>
+    </form>
+    {% if package.directive_violations %}
+    <span class="note">Against your brief — approve only if you've read why.</span>
+    {% endif %}
+  </div>
+
+</section>

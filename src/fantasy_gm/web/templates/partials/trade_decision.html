@@ -1,0 +1,103 @@
+{# One trade decision, whole. Shared by the /trades page, the HTMX swap after a
+   run finishes, and /decisions/{id}, so those three can never disagree.
+   Context: t (trade_decision_view dict), optionally t.error #}
+
+<div id="trade-decision">
+
+  <div class="section__head">
+    <h2>{{ "Trade analysis" if not standalone else "Week " ~ t.summary.week ~ " trades" }}</h2>
+    <span class="stamp">{{ t.summary.created_at | datestamp }}</span>
+  </div>
+
+  <p class="note trade-decision__meta">
+    {% if t.summary.confidence %}Confidence {{ t.summary.confidence | pct }}{% endif %}
+    {% if t.summary.human_response %}
+      · you {{ t.summary.human_response }} this
+    {% else %}
+      · <span class="tag tag--live">awaiting your call</span>
+    {% endif %}
+  </p>
+
+  {% if t.memo %}
+  <p class="prose memo trade-decision__memo">{{ t.memo }}</p>
+  {% endif %}
+
+  {% if t.summary.override_reason %}
+  <div class="panel trade-decision__reason">
+    <strong>Your reason:</strong> {{ t.summary.override_reason }}
+  </div>
+  {% endif %}
+
+  {# Where the numbers came from. Market values move, so a recomputed figure
+     needs a time on it; with no value map we say so instead of showing zeros. #}
+  {% if t.has_values and t.valued_at is not none %}
+  <p class="stamp trade-decision__valued">Valued {{ t.valued_at | clock }} from current market values, not stored with the decision.</p>
+  {% elif not t.has_values %}
+  <p class="stamp trade-decision__valued">Market values unavailable, so value, EV and fairness are not shown for this run.</p>
+  {% endif %}
+
+  {% if t.shape == "packages" %}
+
+    {% if t.selected_deterministically %}
+    <div class="banner banner--info trade-decision__banner">
+      <p class="note">
+        <strong>Picked by scoring, not by the agent.</strong>
+        The run was cut off before it submitted, so these are the best-scoring
+        packages it had already priced. There is no written rationale or pitch.
+      </p>
+    </div>
+    {% endif %}
+
+    {% if t.packages %}
+    <div class="stack trade-decision__packages">
+      {% for package in t.packages %}
+        {% include "partials/trade_package.html" %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="note">No packages were proposed.</p>
+    {% endif %}
+
+    {% if t.refused %}
+      {% with refused = t.refused %}
+        {% include "partials/trade_refused.html" %}
+      {% endwith %}
+    {% endif %}
+
+    {% if t.what_would_change_this %}
+    <section class="prose trade-decision__change">
+      <div class="section__head"><h2>What would change this</h2></div>
+      <p class="note">{{ t.what_would_change_this }}</p>
+    </section>
+    {% endif %}
+
+    {# Rejecting is worth a form of its own: the reason is read back into the
+       next run's prompt, which forbids re-proposing what you turned down. #}
+    {% if not t.summary.human_response %}
+    <section class="trade-decision__reject">
+      <form hx-post="/trades/{{ t.summary.id }}/reject"
+            hx-target="#trade-decision" hx-swap="outerHTML">
+        <label for="reject-reason">Turning all of these down? Say why — the agent
+          reads this back and won't propose them again.</label>
+        <textarea id="reject-reason" name="override_reason" rows="2"></textarea>
+        {% if t.error %}
+        <p class="note trade-decision__error">{{ t.error }}</p>
+        {% endif %}
+        <div class="btn-row">
+          <button class="btn btn--quiet" type="submit">Reject all</button>
+        </div>
+      </form>
+    </section>
+    {% endif %}
+
+  {% elif t.shape == "truncated" %}
+    {% include "partials/trade_truncated.html" %}
+
+  {% elif t.shape == "abstained" %}
+    {% include "partials/trade_abstained.html" %}
+
+  {% else %}
+    <p class="note">This decision predates the current record format. Its memo is above.</p>
+  {% endif %}
+
+</div>

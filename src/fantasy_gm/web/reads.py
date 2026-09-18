@@ -117,3 +117,85 @@ def raw_lineup_slots(adapter: Any, team_id: str, week: int, season: int) -> dict
     """Deliberately uncached — this one feeds the write path, where a stale
     'current slot' would produce a plan that ESPN rejects."""
     return adapter.get_raw_lineup_slots(team_id, week, season)
+
+
+# ------------------------------------------------------------------ trades
+
+def trade_value_map(
+    adapter: Any, cache: ReadCache, week: int, season: int, team_id: str
+) -> tuple[dict, float | None]:
+    """FantasyCalc-backed value map for this team's league + epoch of build.
+
+    FantasyCalc is a network call that can fail. Any exception degrades to an
+    empty dict with a None timestamp so the page still renders without values.
+    """
+    def compute():
+        from fantasy_gm.agent.trade.tools import TradeToolContext
+        settings = league_settings_for(adapter, season)
+        ctx = TradeToolContext(
+            adapter=adapter, settings=settings,
+            team_id=team_id, week=week, season=season,
+        )
+        import time as _t
+        vm = ctx.value_map()
+        return vm, _t.time()
+
+    try:
+        return cache.get(("trade_value_map", week, season, team_id), compute)
+    except Exception:
+        return {}, None
+
+
+def league_player_index(
+    adapter: Any, cache: ReadCache, week: int, season: int
+) -> dict:
+    """pid -> {player, position, team, name, owner_team_id, owner_name}.
+
+    Built from all rosters via TradeToolContext so the join is identical to
+    what the trade agent sees. Returns {} on any exception.
+    """
+    def compute():
+        from fantasy_gm.agent.trade.tools import TradeToolContext
+        # Use a placeholder team_id; player_index spans all rosters.
+        settings = league_settings_for(adapter, season)
+        all_r = adapter.get_all_rosters(week, season)
+        ctx = TradeToolContext(
+            adapter=adapter, settings=settings,
+            team_id=(all_r[0].team_id if all_r else "1"),
+            week=week, season=season,
+            _all_rosters=all_r,
+        )
+        return ctx.player_index()
+
+    try:
+        return cache.get(("league_player_index", week, season), compute)
+    except Exception:
+        return {}
+
+
+def my_trade_needs(
+    adapter: Any, cache: ReadCache, week: int, season: int, team_id: str
+) -> tuple[dict, list]:
+    """(roster_needs dict, trade_chips list) for *my* team.
+
+    roster_needs keys: count/startable/required/surplus/unfilled/best/bar/need/thin.
+    trade_chips: [(RosterPlayer, AssetValue)] sorted value-desc.
+    Returns ({}, []) on any exception.
+    """
+    def compute():
+        from fantasy_gm.agent.trade.tools import TradeToolContext
+        settings = league_settings_for(adapter, season)
+        roster_obj = adapter.get_roster(team_id, week, season)
+        ctx = TradeToolContext(
+            adapter=adapter, settings=settings,
+            team_id=team_id, week=week, season=season,
+            _roster=roster_obj,
+        )
+        needs = ctx.roster_needs(roster_obj)
+        chips = ctx.trade_chips(roster_obj)
+        return needs, chips
+
+    try:
+        return cache.get(("my_trade_needs", week, season, team_id), compute)
+    except Exception:
+        return {}, []

@@ -533,3 +533,470 @@ def result_view(result: Any) -> dict:
         "error": result.error,
         "plan": plan_view(result.plan),
     }
+
+
+# ------------------------------------------------------------------ trades
+
+import time as _time  # local import keeps the top-of-file import block clean
+
+
+def _epoch_now() -> float:
+    """Epoch seconds — used by reads.py to timestamp a freshly-built value map."""
+    return _time.time()
+
+
+def _trade_player_row(
+    player_id: str,
+    names: dict,
+    player_index: dict,
+    value_map: dict,
+    my_player_ids: set,
+) -> dict:
+    """Build a `player` dict for a trade package's send/receive list.
+
+    Joins name, position, and nfl_team from the player index (all rosters).
+    Falls back to the names map or the bare id when the index has no entry.
+    AssetValue fields are None when no value map is available (degraded mode).
+    """
+    info = player_index.get(player_id)
+    av = value_map.get(player_id) if value_map else None
+    if info is not None:
+        name = info["name"]
+        position = info["position"].value.upper() if hasattr(info["position"], "value") else str(info["position"]).upper()
+        nfl_team = info.get("team", "")
+    else:
+        name = names.get(player_id, player_id)
+        position = ""
+        nfl_team = ""
+    return {
+        "player_id": player_id,
+        "name": name,
+        "position": position,
+        "nfl_team": _team_abbr(nfl_team) if nfl_team else "",
+        # `unranked` means FantasyCalc has no price for them, which is not the
+        # same as a price of zero, so it renders blank rather than 0.
+        "value": None if (av is None or av.source == "unranked") else av.value,
+        "value_source": av.source if av else "",
+        "value_note": av.note if av else "",
+        "is_mine": player_id in my_player_ids,
+    }
+
+
+def _build_package(
+    raw: dict,
+    index: int,
+    names: dict,
+    player_index: dict,
+    value_map: dict,
+    my_player_ids: set,
+    standings_map: dict,
+    has_values: bool,
+    refused_because: str | None = None,
+    my_players=None,
+    projections: dict | None = None,
+    settings=None,
+) -> dict:
+    """Assemble one package dict from a raw recommendation entry.
+
+    All analytic quantities (ev_delta, fairness, verdict, lineup impact) are
+    computed from `core.trade_value` — never parsed from strings or hard-coded.
+    When `has_values` is False every value field is left None.
+    """
+    cid = str(raw.get("counterparty_team_id", ""))
+    standing = standings_map.get(cid)
+    counterparty_name = (standing.team_name if standing else
+                         names.get(cid, f"Team {cid}"))
+    # Standings record string (e.g. "3-1") and points-for
+    if standing is not None:
+        rec_str = f"{standing.wins}-{standing.losses}"
+        if standing.ties:
+            rec_str += f"-{standing.ties}"
+        pf = standing.points_for
+    else:
+        rec_str = None
+        pf = None
+
+    # Resolve send/receive player ids, then resolve names.
+    # `send_names`/`receive_names` are present on newer rows but absent on old ones.
+    send_ids = raw.get("send_player_ids") or []
+    receive_ids = raw.get("receive_player_ids") or []
+
+    send = [_trade_player_row(pid, names, player_index, value_map, my_player_ids)
+            for pid in send_ids]
+    receive = [_trade_player_row(pid, names, player_index, value_map, my_player_ids)
+               for pid in receive_ids]
+
+    # Analytics — only when a value map is present. D-017: all numbers from core.
+    ev_delta = None
+    fairness = None
+    verdict = None
+    send_value = None
+    receive_value = None
+    lineup_delta = None
+    lineup_before = None
+    lineup_after = None
+
+    if has_values and value_map:
+        from fantasy_gm.core.trade_value import (
+            evaluate_trade,
+            evaluate_trade_for_roster,
+        )
+
+        # Prefer the roster-aware evaluation: value delta says whether the trade
+        # is fair, but the starting-lineup delta is what decides whether it is
+        # worth making, so compute it whenever the inputs are all present.
+        incoming = [player_index[pid]["player"] for pid in receive_ids
+                    if pid in player_index and player_index[pid].get("player") is not None]
+        can_score_lineup = (
+            my_players and projections and settings is not None
+            and len(incoming) == len(receive_ids)
+        )
+        if can_score_lineup:
+            try:
+                ev = evaluate_trade_for_roster(
+                    list(my_players), incoming, send_ids, receive_ids,
+                    value_map, projections, settings,
+                )
+            except Exception:
+                # A roster the optimizer cannot legally fill would otherwise take
+                # the whole page down; the value comparison still stands.
+                ev = evaluate_trade(send_ids, receive_ids, value_map)
+        else:
+            ev = evaluate_trade(send_ids, receive_ids, value_map)
+
+        send_value = ev.send_value
+        receive_value = ev.receive_value
+        ev_delta = ev.ev_delta
+        fairness = ev.fairness
+        verdict = ev.verdict
+        if ev.roster_impact is not None:
+            lineup_before = ev.roster_impact.before_total
+            lineup_after = ev.roster_impact.after_total
+            lineup_delta = ev.roster_impact.delta
+
+    # The other team's roster, so the ask can be sanity-checked in place. The
+    # player index already carries `owner_team_id`, so this costs no extra read.
+    counterparty_roster = []
+    if cid:
+        for pid, info in player_index.items():
+            if str(info.get("owner_team_id") or "") != cid:
+                continue
+            counterparty_roster.append(
+                _trade_player_row(pid, names, player_index, value_map, my_player_ids))
+        counterparty_roster.sort(
+            key=lambda r: (r["value"] is None, -(r["value"] or 0.0), r["name"]))
+
+    # spine_pct: geometry only. 50.0 when unknown.
+    if send_value is not None and receive_value is not None:
+        total = send_value + receive_value
+        spine_pct = (send_value / total * 100) if total > 0 else 50.0
+    else:
+        spine_pct = 50.0
+
+    return {
+        "index": index,
+        "counterparty_team_id": cid,
+        "counterparty_name": counterparty_name,
+        "counterparty_record": rec_str,
+        "counterparty_points_for": pf,
+        "send": send,
+        "receive": receive,
+        "send_value": send_value,
+        "receive_value": receive_value,
+        "ev_delta": ev_delta,
+        "fairness": fairness,
+        "verdict": verdict,
+        "lineup_delta": lineup_delta,
+        "lineup_before": lineup_before,
+        "lineup_after": lineup_after,
+        "confidence": raw.get("confidence"),
+        "rationale": raw.get("rationale") or "",
+        "pitch": raw.get("counterparty_pitch") or "",
+        "directive_violations": raw.get("directive_violations") or [],
+        "refused_because": refused_because,
+        "counterparty_roster": counterparty_roster,
+        "spine_pct": round(spine_pct, 2),
+    }
+
+
+def trade_decision_view(
+    record: DecisionRecord,
+    *,
+    names: dict,
+    value_map: dict | None = None,
+    my_players=None,
+    league_players=None,
+    projections=None,
+    settings=None,
+    standings=None,
+    valued_at: float | None = None,
+) -> dict:
+    """The trade detail view — the only entry point the trades route should call.
+
+    Branches on the four documented record shapes in order and degrades
+    gracefully when any optional data (value_map, standings) is absent.
+
+    D-017: analytics come from `core.trade_value`; this function only joins,
+    labels, and orders. The one permitted arithmetic is `spine_pct` bar geometry.
+    """
+    rec = record.recommendation or {}
+    has_values = bool(value_map)
+
+    # Build fast-lookup structures.
+    player_index = {}  # populated by caller if available; otherwise {}
+    my_player_ids: set[str] = {
+        str(p.platform_id) for p in (my_players or [])
+    }
+    standings_map: dict[str, Any] = {
+        s.team_id: s for s in (standings or [])
+    }
+    # names already supplied by caller; player_index is passed through value_map
+    # caller may pass a dict of pid -> info as `league_players`.
+    if league_players and isinstance(league_players, dict):
+        player_index = league_players
+    elif league_players:
+        # A bare list of Players carries no ownership, which the counterparty
+        # roster and the incoming-player lookup both need. Fail loudly rather
+        # than rendering a package with silently missing halves.
+        raise TypeError(
+            "league_players must be the player index (pid -> info dict) from "
+            "reads.league_player_index, not a list of Player objects")
+
+    # ---- shape detection (contract order) ----
+    if "trades" in rec:
+        shape = "packages"
+    elif "truncated" in rec:
+        shape = "truncated"
+    elif "abstained" in rec:
+        shape = "abstained"
+    else:
+        shape = "unknown"
+
+    packages = []
+    refused = []
+    evaluated = []
+    missing_information: list[str] = []
+    what_you_would_need: str | None = None
+    what_would_change_this: str | None = None
+    selected_deterministically = False
+
+    if shape == "packages":
+        raw_trades: list[dict] = rec.get("trades") or []
+        for i, raw in enumerate(raw_trades, 1):
+            packages.append(_build_package(
+                raw, i, names, player_index, value_map or {},
+                my_player_ids, standings_map, has_values,
+                my_players=my_players, projections=projections, settings=settings,
+            ))
+        for i, raw in enumerate(rec.get("refused_trades") or [], 1):
+            refused.append(_build_package(
+                raw, i, names, player_index, value_map or {},
+                my_player_ids, standings_map, has_values,
+                refused_because=raw.get("refused_because"),
+                my_players=my_players, projections=projections, settings=settings,
+            ))
+        selected_deterministically = bool(rec.get("selected_deterministically"))
+        what_would_change_this = rec.get("what_would_change_this")
+
+    elif shape == "truncated":
+        for raw in rec.get("evaluated_packages") or []:
+            cid = str(raw.get("counterparty_team_id") or "")
+            standing = standings_map.get(cid)
+            cname = (standing.team_name if standing else
+                     names.get(cid, f"Team {cid}"))
+            send_ids = raw.get("send_player_ids") or []
+            receive_ids = raw.get("receive_player_ids") or []
+            evaluated.append({
+                "counterparty_team_id": cid or None,
+                "counterparty_name": cname,
+                "send": [_trade_player_row(pid, names, player_index, value_map or {},
+                                           my_player_ids) for pid in send_ids],
+                "receive": [_trade_player_row(pid, names, player_index, value_map or {},
+                                              my_player_ids) for pid in receive_ids],
+                # Passed through verbatim — not parsed into columns (contract rule).
+                "evaluation_text": raw.get("evaluation") or "",
+            })
+
+    elif shape == "abstained":
+        missing_information = rec.get("missing_information") or []
+        what_you_would_need = rec.get("what_you_would_need")
+        what_would_change_this = rec.get("what_would_change_this")
+
+    return {
+        "summary": decision_summary(record),
+        "shape": shape,
+        "memo": record.memo or "",
+        "packages": packages,
+        "refused": refused,
+        "evaluated": evaluated,
+        "missing_information": missing_information,
+        "what_you_would_need": what_you_would_need,
+        "what_would_change_this": what_would_change_this,
+        "selected_deterministically": selected_deterministically,
+        "truncated": bool(rec.get("truncated")),
+        "hit_step_limit": bool(rec.get("hit_step_limit")),
+        "llm_calls": rec.get("llm_calls"),
+        "llm_budget": rec.get("llm_budget"),
+        "agent_text": rec.get("agent_text"),
+        "valued_at": valued_at,
+        "has_values": has_values,
+    }
+
+
+def _owner_label(info: dict, standings_names: dict) -> str:
+    """Which fantasy team holds this player, named rather than numbered.
+
+    ESPN's member records frequently carry no owner name at all, so the owning
+    team is identified the way it is everywhere else on the site: from standings.
+    """
+    tid = str(info.get("owner_team_id") or "")
+    named = standings_names.get(tid)
+    if named:
+        return named
+    owner = (info.get("owner_name") or "").strip()
+    if owner and owner.lower() != "unknown":
+        return owner
+    return f"Team {tid}" if tid else ""
+
+
+def trade_brief_view(
+    roster,
+    value_map: dict,
+    chips: list,
+    league_players: dict,
+    prefs=None,
+    standings=None,
+) -> dict:
+    """Sidebar form inputs for starting a new trade run.
+
+    Chip classification comes from `trade_chips`; sorting and selection marks
+    from `TradePreferences`. No analytics invented here.
+    """
+    from fantasy_gm.models import Position
+
+    standings_names = {st.team_id: st.team_name for st in (standings or [])}
+
+    BRIEF_POSITIONS = [Position.QB, Position.RB, Position.WR, Position.TE]
+    has_values = bool(value_map)
+
+    chip_ids: set[str] = {rp.player.platform_id for rp, _ in chips}
+    # `prefs` may be a TradePreferences or None.
+    selected_positions: set[str] = set()
+    selected_offerable: set[str] = set()
+    selected_targets: set[str] = set()
+    if prefs is not None:
+        selected_positions = {p.value for p in (prefs.want_positions or [])}
+        selected_offerable = set(prefs.offerable_ids or [])
+        selected_targets = set(prefs.target_ids or [])
+
+    positions = [
+        {"value": p.value, "label": p.value,
+         "selected": p.value in selected_positions}
+        for p in BRIEF_POSITIONS
+    ]
+
+    my_team_id = roster.team_id if roster else None
+
+    # Build offerable list: all my roster players, chips first, then value desc.
+    offerable = []
+    if roster:
+        vm = value_map or {}
+        for rp in roster.players:
+            pid = rp.player.platform_id
+            av = vm.get(pid)
+            is_chip = pid in chip_ids
+            # slot comes from the RosterPlayer's slot attribute.
+            slot = rp.slot.value.upper() if hasattr(rp.slot, "value") else str(rp.slot).upper()
+            offerable.append({
+                "player_id": pid,
+                "name": rp.player.name,
+                "position": rp.player.position.value.upper(),
+                "nfl_team": _team_abbr(rp.player.nfl_team),
+                # `unranked` means FantasyCalc has no price for them, which is not the
+        # same as a price of zero, so it renders blank rather than 0.
+        "value": None if (av is None or av.source == "unranked") else av.value,
+                "value_source": av.source if av else "",
+                "value_note": av.note if av else "",
+                "is_mine": True,
+                "is_chip": is_chip,
+                "is_starter": rp.is_starter,
+                "slot": slot,
+                "selected": pid in selected_offerable,
+            })
+        # Sort: chips first, then by value descending (None treated as 0).
+        offerable.sort(key=lambda r: (not r["is_chip"], -(r["value"] or 0.0)))
+
+    # Targets: other-team players from the league player index, value desc.
+    targets = []
+    for pid, info in (league_players or {}).items():
+        if info.get("owner_team_id") == my_team_id:
+            continue
+        av = (value_map or {}).get(pid)
+        targets.append({
+            "player_id": pid,
+            "name": info["name"],
+            "position": (info["position"].value.upper()
+                         if hasattr(info["position"], "value")
+                         else str(info["position"]).upper()),
+            "nfl_team": info.get("team", ""),
+            "owner_team_name": _owner_label(info, standings_names),
+            "owner_team_id": info.get("owner_team_id", ""),
+            "owner_name": info.get("owner_name", ""),
+            # `unranked` means FantasyCalc has no price for them, which is not the
+        # same as a price of zero, so it renders blank rather than 0.
+        "value": None if (av is None or av.source == "unranked") else av.value,
+            "selected": pid in selected_targets,
+        })
+    targets.sort(key=lambda r: -(r["value"] or 0.0))
+
+    return {
+        "positions": positions,
+        "offerable": offerable,
+        "chip_count": len(chip_ids),
+        "roster_count": len(offerable),
+        "targets": targets,
+        "notes": prefs.notes if prefs else "",
+        "has_values": has_values,
+    }
+
+
+def trade_needs_view(my_needs: dict, chips: list) -> dict:
+    """Right-rail needs/surplus table.
+
+    State precedence (contract): need > thin > surplus(>0) > ok.
+    `my_needs` is the raw dict from `TradeToolContext.roster_needs`.
+    """
+    rows = []
+    for pos, info in my_needs.items():
+        need = info.get("need", False)
+        thin = info.get("thin", False)
+        surplus = info.get("surplus", 0)
+        if need:
+            state = "need"
+        elif thin:
+            state = "thin"
+        elif surplus > 0:
+            state = "surplus"
+        else:
+            state = "ok"
+        rows.append({
+            "position": pos.value if hasattr(pos, "value") else str(pos),
+            "state": state,
+            "best": info.get("best", 0.0),
+            "bar": info.get("bar", 0.0),
+            "surplus": surplus,
+            "unfilled": info.get("unfilled", 0),
+        })
+    chip_count = len(chips)
+    return {"rows": rows, "chip_count": chip_count}
+
+
+def trade_send_plan_view(plan) -> dict:
+    """Render a `TradeSendPlan` for the confirmation/steps page."""
+    return {
+        "counterparty_team_id": plan.counterparty_team_id,
+        "send_names": list(plan.send_names),
+        "receive_names": list(plan.receive_names),
+        "human_steps": list(plan.human_steps),
+        "notes": list(plan.notes),
+    }

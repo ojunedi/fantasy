@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Trades · Week {{ week }} · Fantasy GM{% endblock %}
+
+{% block content %}
+<div class="section__head">
+  <h2>Trades</h2>
+  <span class="stamp">week {{ week }}{% if season %} · {{ season }}{% endif %}</span>
+</div>
+
+<div class="split" style="margin-top:24px;">
+
+  {# LEFT: brief form #}
+  <div class="stack">
+    <section id="trade-brief">
+      {% if brief is defined and brief %}
+        {# Open only when there is no analysis yet. The form is long, and once
+           the agent has produced something the packages are the point of the
+           page, not the inputs that produced them. #}
+        <details class="trade-brief" {% if not t %}open{% endif %}>
+          <summary class="trade-brief__summary">Trade brief</summary>
+          {% include "partials/trade_brief.html" %}
+        </details>
+      {% else %}
+      <div class="section__head"><h2>Trade brief</h2></div>
+      <div class="btn-row" style="margin-top:18px;">
+        <form method="post" action="/runs">
+          <input type="hidden" name="kind" value="trade">
+          {% if week is defined %}<input type="hidden" name="week" value="{{ week }}">{% endif %}
+          {% if season is defined %}<input type="hidden" name="season" value="{{ season }}">{% endif %}
+          <button class="btn" type="submit">Propose trades for week {{ week }}</button>
+        </form>
+      </div>
+        {% endif %}
+    </section>
+  </div>
+
+  {# RIGHT: needs table #}
+  <div class="stack">
+    <section>
+      {% if needs is defined and needs %}
+        {% include "partials/trade_needs.html" %}
+      {% endif %}
+    </section>
+  </div>
+
+</div>
+
+{# Most recent trade decision — rendered by the shared partial so this page,
+   the post-run swap and /decisions/{id} can never drift apart. #}
+{% if t is defined and t %}
+<div class="trades__decision">
+  {% include "partials/trade_decision.html" %}
+</div>
+{% endif %}
+
+{# History #}
+{% if decisions is defined and decisions %}
+<div style="margin-top:48px;">
+  {% with decisions = decisions %}
+    {% include "partials/trade_history.html" %}
+  {% endwith %}
+</div>
+{% endif %}
+
+{% endblock %}

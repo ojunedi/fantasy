@@ -42,18 +42,33 @@ def _render_status(request: Request, run: runs_mod.Run) -> str:
     return " ".join(html.split())
 
 
+WORKERS = {
+    "lineup": runs_mod.lineup_worker,
+    "trade": runs_mod.trade_worker,
+}
+
+
 @router.post("", response_class=HTMLResponse)
 def start_run(request: Request,
               week: int = Form(...),
               season: int = Form(...),
               supervised: str = Form(default=""),
+              kind: str = Form(default="lineup"),
+              want_positions: list[str] = Form(default=[]),
+              offerable_ids: list[str] = Form(default=[]),
+              target_ids: list[str] = Form(default=[]),
+              notes: str = Form(default=""),
               settings: WebSettings = Depends(get_settings)) -> HTMLResponse:
     manager = _manager(request)
 
-    # Single-flight is about cost and UI clarity, not correctness: LineupGraphAgent
-    # already gives each run its own checkpoint thread. But a second click should
+    if kind not in WORKERS:
+        return HTMLResponse('<p class="note">Unknown run type.</p>', status_code=400)
+
+    # Single-flight is about cost and UI clarity, not correctness: the agents
+    # already give each run its own checkpoint thread. But a second click should
     # not spend another eight LLM calls, so it gets the live panel and a 409.
-    existing = manager.get_active("lineup", week, season)
+    # Keyed by kind as well as week, so a trade run and a lineup run can overlap.
+    existing = manager.get_active(kind, week, season)
     if existing is not None:
         return render_panel(request, existing, status_code=409)
 
@@ -62,13 +77,27 @@ def start_run(request: Request,
     except RuntimeError:                   # sync context (TestClient) — no live loop
         loop = None
 
-    run = manager.create("lineup", week, season, settings.team_id,
-                         supervised=bool(supervised), loop=loop)
+    brief = None
+    if kind == "trade":
+        # The four interview fields, straight off the form. All optional: an
+        # empty brief runs the unconstrained scan, exactly as skipping every
+        # CLI interview question does.
+        brief = {
+            "want_positions": want_positions,
+            "offerable_ids": offerable_ids,
+            "target_ids": target_ids,
+            "notes": notes,
+        }
 
-    factory = getattr(request.app.state, "agent_factory", None)
+    run = manager.create(kind, week, season, settings.team_id,
+                         supervised=bool(supervised), loop=loop, brief=brief)
+
+    factory = getattr(request.app.state, f"{kind}_agent_factory",
+                      getattr(request.app.state, "agent_factory", None))
+    worker_fn = WORKERS[kind]
 
     def worker(r: runs_mod.Run) -> str | None:
-        return runs_mod.lineup_worker(settings, r, manager, agent_factory=factory)
+        return worker_fn(settings, r, manager, agent_factory=factory)
 
     manager.start(run, worker)
     return render_panel(request, run)

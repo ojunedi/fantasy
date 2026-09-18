@@ -50,6 +50,9 @@ class Run:
     decision_id: str | None = None
     error: str | None = None
     cancel: threading.Event = field(default_factory=threading.Event)
+    # The trade brief, straight off the form. Replaces `memo/interview.py`'s
+    # `input()` prompts, which a web request obviously cannot use.
+    brief: dict | None = None
 
     @property
     def is_live(self) -> bool:
@@ -86,9 +89,11 @@ class RunManager:
             return run
 
     def create(self, kind: str, week: int, season: int, team_id: str,
-               supervised: bool, loop: asyncio.AbstractEventLoop | None = None) -> Run:
+               supervised: bool, loop: asyncio.AbstractEventLoop | None = None,
+               brief: dict | None = None) -> Run:
         run = Run(id=uuid.uuid4().hex[:12], week=week, season=season,
-                  team_id=team_id, supervised=supervised, kind=kind, loop=loop)
+                  team_id=team_id, supervised=supervised, kind=kind, loop=loop,
+                  brief=brief)
         with self._lock:
             self._runs[run.id] = run
             self._active[(kind, week, season)] = run.id
@@ -213,3 +218,90 @@ def lineup_worker(settings: Any, run: Run, manager: RunManager,
 
     DecisionStore(settings.db_path).save(record)
     return str(record.id)
+
+
+def _preferences_from_brief(brief: dict | None):
+    """Form fields -> `TradePreferences`.
+
+    The CLI gathers these through `memo/interview.py`'s `input()` prompts, which
+    a request handler cannot use. The four fields are identical, so the agent
+    sees exactly the same directive object either way. An empty brief produces
+    empty preferences, which the agent treats as "no constraints" — the same as
+    skipping every interview question.
+    """
+    from fantasy_gm.agent.trade.preferences import TradePreferences
+    from fantasy_gm.models import Position
+
+    prefs = TradePreferences()
+    if not brief:
+        return prefs
+
+    wanted = []
+    for raw in brief.get("want_positions") or []:
+        match = next((p for p in (Position.QB, Position.RB, Position.WR, Position.TE)
+                      if p.value.lower() == str(raw).lower()), None)
+        if match is not None:
+            wanted.append(match)
+    prefs.want_positions = wanted
+    prefs.offerable_ids = [str(i) for i in (brief.get("offerable_ids") or [])]
+    prefs.target_ids = [str(i) for i in (brief.get("target_ids") or [])]
+    prefs.notes = (brief.get("notes") or "").strip()
+    return prefs
+
+
+def trade_worker(settings: Any, run: Run, manager: RunManager,
+                 agent_factory=None) -> str | None:
+    """Mirror of `cli.cmd_propose_trades`, minus the interactive parts.
+
+    Same construction-inside-the-thread rules as `lineup_worker`: the adapter
+    and the store are both built here, never handed across from the event loop.
+
+    The supervisor posture is unconditional in the CLI; here it follows the
+    form's checkbox, because it costs a read and the page offers the choice.
+    """
+    from fantasy_gm.agent.config import AgentConfig
+    from fantasy_gm.agent.trade.tools import TradeToolContext
+    from fantasy_gm.db.store import DecisionStore
+    from fantasy_gm.web.deps import build_adapter
+    from fantasy_gm.web.trace import make_emit_adapter
+
+    emit = make_emit_adapter(run, manager)
+
+    adapter = build_adapter(settings)
+    league = adapter.get_league_settings(season=run.season)
+
+    ctx = TradeToolContext(
+        adapter=adapter, settings=league, team_id=run.team_id,
+        week=run.week, season=run.season,
+    )
+    ctx.preferences = _preferences_from_brief(run.brief)
+    if not ctx.preferences.is_empty():
+        emit({"kind": "brief", "summary": _describe_brief(ctx)})
+
+    if run.supervised:
+        from fantasy_gm.agent.supervisor import GMSupervisor
+        posture = GMSupervisor(adapter, league, run.team_id).posture(run.week, run.season)
+        ctx.posture = posture.posture
+        emit({"kind": "posture", "posture": posture.posture,
+              "rationale": posture.rationale})
+
+    if agent_factory is None:
+        from fantasy_gm.agent.trade.graph import TradeGraphAgent
+        agent = TradeGraphAgent(AgentConfig())
+    else:
+        agent = agent_factory()
+
+    record = agent.decide(ctx, emit=emit)
+
+    DecisionStore(settings.db_path).save(record)
+    return str(record.id)
+
+
+def _describe_brief(ctx: Any) -> str:
+    """One line of what the manager asked for, for the trace."""
+    try:
+        from fantasy_gm.agent.trade.preferences import describe
+        names = {pid: info["name"] for pid, info in ctx.player_index().items()}
+        return describe(ctx.preferences, names).strip()
+    except Exception:
+        return "brief applied"

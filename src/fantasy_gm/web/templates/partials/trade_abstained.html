@@ -1,0 +1,52 @@
+{# trade_abstained.html — THE MAJORITY CASE (22 of 35 logged decisions).
+   No trade was worth making. Treat this as an invitation to act, not an error.
+   State plainly what is missing, what would change the outcome, and how to
+   run again with a different brief. No apology, no hedging. #}
+
+<div class="section__head" style="margin-top:24px;">
+  <h2>No trade worth making</h2>
+</div>
+
+<section class="prose stack" style="margin-top:18px;">
+
+  <p>The agent reviewed the available trades and did not find one that clears
+  the bar you set. Run it again with a different brief — different targets,
+  different depth players, or a note with explicit permission to take on salary.</p>
+
+  {% if t.missing_information %}
+  <div>
+    <p class="note" style="font-weight:600; color:var(--black); margin-bottom:6px;">What it was missing</p>
+    <ul class="note" style="margin:0; padding-left:18px;">
+      {% for m in t.missing_information %}
+      <li>{{ m }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if t.what_you_would_need %}
+  <div class="panel" style="margin-top:16px;">
+    <p class="note" style="font-weight:600; color:var(--black); margin-bottom:4px;">What would change this</p>
+    <p class="note" style="margin:0;">{{ t.what_you_would_need }}</p>
+  </div>
+  {% elif t.what_would_change_this %}
+  <div class="panel" style="margin-top:16px;">
+    <p class="note" style="font-weight:600; color:var(--black); margin-bottom:4px;">What would change this</p>
+    <p class="note" style="margin:0;">{{ t.what_would_change_this }}</p>
+  </div>
+  {% endif %}
+
+  <div class="btn-row" style="margin-top:20px;">
+    <form method="post" action="/runs">
+      <input type="hidden" name="kind" value="trade">
+      {% if week is defined %}
+      <input type="hidden" name="week" value="{{ week }}">
+      {% endif %}
+      {% if season is defined %}
+      <input type="hidden" name="season" value="{{ season }}">
+      {% endif %}
+      <button class="btn" type="submit">Run trades again with a new brief</button>
+    </form>
+  </div>
+
+</section>

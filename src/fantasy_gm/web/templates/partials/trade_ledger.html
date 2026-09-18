@@ -1,0 +1,78 @@
+{# trade_ledger.html — the spine: one trade, both sides facing across a navy rule.
+
+   Each side owns its own label and subtotal rather than taking them from
+   separate header and footer rows. That is what lets the whole thing collapse
+   on a narrow screen without the "Out"/"In" labels detaching from the players
+   they belong to — the first version stacked both labels at the top and you
+   could no longer tell who was leaving.
+
+   Usage: {% from "partials/trade_ledger.html" import ledger %}
+          {{ ledger(package, has_values, refused=false) }}
+#}
+{% macro side(players, label, has_values, subtotal, align) %}
+<div class="ledger__side ledger__side--{{ align }}">
+  <div class="ledger__label">{{ label }}</div>
+
+  {% for p in players %}
+  <div class="ledger__row">
+    {% if align == "recv" and has_values and p.value is not none %}
+    <span class="ledger__val num">{{ p.value | points(0) }}</span>
+    {% endif %}
+    <span class="ledger__name">{{ p.name }}</span>
+    <span class="ledger__pos note">{{ p.position }}{% if p.nfl_team %} · {{ p.nfl_team }}{% endif %}</span>
+    {% if align == "send" and has_values and p.value is not none %}
+    <span class="ledger__val num">{{ p.value | points(0) }}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% if not players %}
+  <div class="ledger__row"><span class="note">nothing</span></div>
+  {% endif %}
+
+  {% if has_values and subtotal is not none %}
+  <div class="ledger__row ledger__subtotal">
+    <span class="num">{{ subtotal | points(0) }}</span>
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro ledger(package, has_values, refused=false) %}
+<div class="ledger{% if refused %} ledger--refused{% endif %}">
+
+  <div class="ledger__body">
+    {{ side(package.send, "Out", has_values, package.send_value, "send") }}
+
+    {# The spine. Vertical on a wide screen, a horizontal rule once stacked. #}
+    <div class="ledger__spine" aria-hidden="true"></div>
+
+    {{ side(package.receive, "In", has_values, package.receive_value, "recv") }}
+  </div>
+
+  {# The verdict straddles the spine: the single number the deal turns on. #}
+  {% if has_values and package.ev_delta is not none %}
+  <div class="ledger__verdict">
+    <span class="ledger__ev
+      {%- if package.ev_delta > 5 %} ledger__ev--gain
+      {%- elif package.ev_delta < -5 %} ledger__ev--loss
+      {%- endif %}">{{ package.ev_delta | signed(0) }} EV</span>
+    {% if package.fairness is not none %}
+    <span class="note">· fairness {{ package.fairness | pct }}</span>
+    {% endif %}
+    {% if package.lineup_delta is not none %}
+    {# `signed` renders an exact zero as a dash, which reads as "missing" here
+       rather than "no change", so say it in words instead. #}
+    <span class="note">·
+      {% if package.lineup_delta > 0.05 or package.lineup_delta < -0.05 %}
+        lineup {{ package.lineup_delta | signed(1) }}
+      {% else %}
+        lineup unchanged
+      {% endif %}
+    </span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% endmacro %}
