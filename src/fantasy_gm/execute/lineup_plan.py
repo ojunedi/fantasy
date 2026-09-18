@@ -9,7 +9,7 @@ This is the pure core of the write path — fully unit tested — so the executo
 """
 from __future__ import annotations
 
-from fantasy_gm.core.optimizer import optimize_lineup
+from fantasy_gm.core.optimizer import locks_from_roster, optimize_lineup
 from fantasy_gm.execute.base import LineupMove
 from fantasy_gm.models import LeagueSettings, Player, Position
 
@@ -36,6 +36,28 @@ def slot_name(slot_id: int) -> str:
     return ESPN_SLOT_NAMES.get(slot_id, f"slot{slot_id}")
 
 
+def locked_conflicts(
+    roster_players: list,          # list[RosterPlayer]
+    starter_player_ids: list[str],
+) -> list[str]:
+    """Requested changes that ESPN will refuse because the player has played.
+
+    Returned as human-readable strings for the plan's notes, so a request that
+    cannot be honoured says so up front instead of failing with a 409.
+    """
+    requested = set(starter_player_ids)
+    problems: list[str] = []
+    for rp in roster_players:
+        if not rp.is_locked:
+            continue
+        pid = rp.player.platform_id
+        if rp.is_starter and pid not in requested:
+            problems.append(f"{rp.player.name} has already played and cannot be benched.")
+        elif not rp.is_starter and pid in requested:
+            problems.append(f"{rp.player.name} has already played and cannot be started.")
+    return problems
+
+
 def build_target_slots(
     roster_players: list,          # list[RosterPlayer]
     starter_player_ids: list[str],
@@ -45,16 +67,28 @@ def build_target_slots(
     Assign each rostered player a target ESPN slot ID such that exactly the
     requested starters occupy starter slots. Reuses the tested optimizer to find
     a legal slot assignment (proposed starters get weight 1.0, everyone else 0).
+
+    Locked players are pinned to the slot they already occupy, whatever was
+    requested: their game has kicked off and ESPN rejects the whole transaction
+    if it touches them.
     """
     players: list[Player] = [rp.player for rp in roster_players]
     starter_set = set(starter_player_ids)
     proj = {p.platform_id: (1.0 if p.platform_id in starter_set else 0.0) for p in players}
 
-    lineup = optimize_lineup(players, proj, settings)
+    locked = locks_from_roster(roster_players)
+    lineup = optimize_lineup(players, proj, settings, locked=locked)
 
     target: dict[str, int] = {}
     for rp in lineup:
         pid = rp.player.platform_id
+        # Locked players are left out of the target entirely. `plan_moves` only
+        # emits a move for a player it finds here, so omitting them is what
+        # guarantees no move is ever generated for someone who has played —
+        # stronger than assigning them a slot we believe matches, because any
+        # slot-id mismatch would silently reintroduce the move.
+        if pid in locked:
+            continue
         if rp.is_starter and pid in starter_set:
             target[pid] = POSITION_TO_ESPN_SLOT.get(rp.slot, BENCH_SLOT)
         else:

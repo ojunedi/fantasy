@@ -16,6 +16,7 @@ from fantasy_gm.execute.base import Executor, ExecutionPlan, ExecutionResult
 from fantasy_gm.execute.lineup_plan import (
     build_espn_transaction,
     build_target_slots,
+    locked_conflicts,
     plan_moves,
     slot_name,
 )
@@ -37,7 +38,9 @@ class ESPNApiExecutor(Executor):
     def plan_set_lineup(
         self, team_id: str, week: int, season: int, starter_player_ids: list[str]
     ) -> ExecutionPlan:
-        roster = self.adapter.get_roster(team_id, week, season)
+        # Fresh, not cached: lock state changes the moment a game kicks off, and
+        # planning against an hour-old roster is how you build a 409.
+        roster = self.adapter.get_roster(team_id, week, season, fresh=True)
         current = self.adapter.get_raw_lineup_slots(team_id, week, season)
         names = {rp.player.platform_id: rp.player.name for rp in roster.players}
         settings = self.adapter.get_league_settings(season)
@@ -53,6 +56,8 @@ class ESPNApiExecutor(Executor):
             human_steps=[m.describe(slot_name) for m in moves],
             context={"season": season, "week": week, "team_id": team_id},
         )
+        for problem in locked_conflicts(roster.players, starter_player_ids):
+            plan.notes.append(problem)
         if not moves:
             plan.notes.append("Proposed lineup already matches current lineup — nothing to do.")
         if not (self._swid and self._espn_s2):

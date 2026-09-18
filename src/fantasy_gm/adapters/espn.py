@@ -227,6 +227,21 @@ class ESPNAdapter(FantasyPlatform):
                 raw_pos = pdata.get("defaultPositionId", 0)
                 primary_pos = ESPN_POSITION_MAP.get(raw_pos, Position.WR)
                 status_str = entry.get("playerPoolEntry", {}).get("injuryStatus", "ACTIVE")
+                pool = entry.get("playerPoolEntry", {})
+                # ESPN sets lineupLocked once the player's game kicks off; it is
+                # the same flag behind the 409 TRAN_LINEUP_LOCKED rejection on a
+                # write, so it is authoritative about what can still be moved.
+                is_locked = bool(pool.get("lineupLocked"))
+                # statSourceId 0 is the actual result, 1 is the projection. A
+                # player who has not played has no statSourceId 0 row at all,
+                # which is exactly how we tell "played" from "projected to".
+                actual_points = None
+                for stat in pdata.get("stats", []):
+                    if (stat.get("statSourceId") == 0
+                            and stat.get("scoringPeriodId") == week
+                            and stat.get("seasonId") == season):
+                        actual_points = round(float(stat.get("appliedTotal", 0.0)), 2)
+                        break
                 player = Player(
                     platform_id=str(pdata.get("id", "")),
                     name=pdata.get("fullName", "Unknown"),
@@ -239,6 +254,8 @@ class ESPNAdapter(FantasyPlatform):
                     player=player,
                     slot=position,
                     is_starter=is_starter,
+                    is_locked=is_locked,
+                    actual_points=actual_points,
                 ))
             rosters.append(Roster(
                 team_id=team_id,

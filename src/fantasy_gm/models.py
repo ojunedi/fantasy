@@ -124,6 +124,12 @@ class RosterPlayer(BaseModel):
     is_starter: bool
     acquisition_type: str | None = None  # "draft", "waiver", "trade", "free_agent"
 
+    # Set once the player's NFL game has started: ESPN refuses any lineup change
+    # involving them (HTTP 409 TRAN_LINEUP_LOCKED), so they cannot be moved and
+    # their points are already banked rather than projected.
+    is_locked: bool = False
+    actual_points: float | None = None   # None until they have played
+
 
 # ---------------------------------------------------------------------------
 # Rosters & Matchups
