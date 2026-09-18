@@ -146,3 +146,16 @@ def test_nfl_team_is_an_abbreviation_not_an_espn_id(client, roster):
     assert ">ATL<" in text
     # the fixture uses real abbreviations, so no bare id should survive either
     assert ">14<" not in text
+
+
+def test_an_in_flight_lineup_run_is_rendered_on_load(client, app):
+    """`run_panel.html` renders `run` while the page carries `active_run`, so
+    this include needs an explicit binding — without it a reload mid-run raised
+    UndefinedError and lost the trace."""
+    run = app.state.runs.create("lineup", 3, 2026, "8", supervised=False)
+    app.state.runs.publish(run, {
+        "kind": "tool_call", "name": "optimize_lineup", "args": {},
+        "display": "{}", "block": False})
+    text = client.get("/team").text
+    assert "optimize_lineup" in text
+    assert f"/runs/{run.id}/stream" in text

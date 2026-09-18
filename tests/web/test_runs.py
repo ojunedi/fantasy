@@ -94,11 +94,19 @@ def _wait_for(manager_getter, predicate, timeout=5.0):
 
 # ------------------------------------------------------------------ starting
 
-def test_starting_a_run_returns_the_panel(client, app, fake_agent, patched_worker):
+def test_starting_a_run_returns_the_panel(client, app, patched_worker):
+    """Gated so the run is genuinely in flight — an ungated fake can finish
+    before the assertion and the panel legitimately reads "done"."""
+    import threading
+    agent = FakeAgent()
+    agent.block = threading.Event()
+    app.state.agent_factory = lambda: agent
+
     resp = _start(client)
     assert resp.status_code == 200
     assert "running" in resp.text
     assert "run-trace" in resp.text
+    agent.block.set()
 
 
 def test_run_completes_and_saves_the_decision(client, app, fake_agent, patched_worker, store):
@@ -346,3 +354,40 @@ def test_a_step_limit_event_is_rendered_in_the_trace(client, app, patched_worker
     assert "22 graph steps" in text
     assert "truncated" in text
     assert "GraphRecursionError" not in text
+
+
+def test_stop_disappears_when_the_run_ends(client, app, patched_worker):
+    """Stop lives inside `#run-status`, the SSE swap target. Outside it, the
+    button survived the run finishing and still offered to cancel."""
+    import threading
+    agent = FakeAgent()
+    agent.block = threading.Event()
+    app.state.agent_factory = lambda: agent
+
+    _start(client)
+    run_id = list(app.state.runs._runs)[0]
+
+    live = client.get(f"/runs/{run_id}/panel").text
+    assert ">Stop</button>" in live
+
+    agent.block.set()
+    _wait_for(lambda: app.state.runs.get(run_id), lambda r: r.status == "done")
+    done = client.get(f"/runs/{run_id}/panel").text
+    assert ">Stop</button>" not in done
+    assert "Review and approve" in done
+
+
+def test_the_status_frame_sent_at_the_end_drops_stop_too(client, app, fake_agent,
+                                                         patched_worker):
+    """The SSE `status` frame is what replaces the header, so the button must be
+    gone from that frame's HTML as well."""
+    _start(client)
+    run_id = list(app.state.runs._runs)[0]
+    _wait_for(lambda: app.state.runs.get(run_id), lambda r: r.status == "done")
+
+    body = client.get(f"/runs/{run_id}/stream").text
+    status_frames = [l for l in body.splitlines() if l.startswith("event: status")]
+    assert status_frames
+    data = [l for l in body.splitlines() if l.startswith("data: ") and "run__status" in l]
+    assert data
+    assert not any(">Stop</button>" in d for d in data)

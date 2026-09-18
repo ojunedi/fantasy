@@ -1,7 +1,13 @@
+{# Rendered inside `#run-status`, which is the SSE swap target — so the Stop
+   button lives here rather than in the panel. Outside the target it survived
+   the run ending and kept offering to cancel something already finished. #}
 <div class="run__status">
   {% if run.status == "running" %}
     <span class="tag tag--live pulse">running</span>
     <span class="note">Week {{ run.week }} {{ run.kind }}</span>
+    <button class="btn btn--quiet btn--small"
+            hx-post="/runs/{{ run.id }}/cancel"
+            hx-target="#run-panel" hx-swap="innerHTML">Stop</button>
   {% elif run.status == "done" %}
     <span class="tag tag--chyron">done</span>
     {% if run.decision_id %}

@@ -11,11 +11,6 @@
     <div id="run-status" {% if run.status == "running" %}sse-swap="status"{% endif %}>
       {% include "partials/run_status.html" %}
     </div>
-    {% if run.status == "running" %}
-    <button class="btn btn--quiet btn--small"
-            hx-post="/runs/{{ run.id }}/cancel"
-            hx-target="#run-panel" hx-swap="innerHTML">Stop</button>
-    {% endif %}
   </div>
 
   <div class="trace" id="run-trace"

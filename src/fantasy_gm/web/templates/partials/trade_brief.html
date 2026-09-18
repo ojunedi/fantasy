@@ -11,7 +11,8 @@
   {% endif %}
 </div>
 
-<form method="post" action="/runs" style="margin-top:18px;">
+<form class="trade-brief__form"
+      hx-post="/runs" hx-target="#run-panel" hx-swap="innerHTML">
   <input type="hidden" name="kind" value="trade">
   {% if week is defined %}
   <input type="hidden" name="week" value="{{ week }}">
@@ -127,16 +128,14 @@
 
   {# Notes for the agent #}
   <div style="margin-bottom:20px;">
-    <label for="trade-notes" style="font-family:var(--condensed); font-weight:700; font-size:15px;
-                                     color:var(--black); letter-spacing:0.03em; margin-bottom:8px;">
-      Notes
-    </label>
+    <label class="brief__label" for="trade-notes">Notes</label>
     <textarea id="trade-notes" name="notes" rows="3"
               placeholder="E.g. prioritise WR depth, willing to take salary…">{{ brief.notes if brief.notes }}</textarea>
   </div>
 
   <div class="btn-row">
     <button class="btn" type="submit">Propose trades for week {{ week if week is defined }}</button>
+    <span class="note hide-when-loading">Takes about a minute.</span>
   </div>
 
 </form>

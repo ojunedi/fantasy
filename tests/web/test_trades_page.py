@@ -347,3 +347,37 @@ def test_a_target_names_the_owning_fantasy_team(client):
     """ESPN's owner names are frequently absent, so standings supply them."""
     text = client.get("/trades").text
     assert "Unknown" not in text
+
+
+# ---------------------------------------------------- the run stays in place
+
+def test_the_brief_form_swaps_in_place_and_does_not_navigate(client):
+    """A plain `method=post action=/runs` submit navigates the browser to /runs
+    and renders the bare run partial as a whole unstyled document. The form must
+    be an HTMX swap, exactly as the lineup page's is."""
+    text = client.get("/trades").text
+    assert 'hx-post="/runs"' in text
+    assert 'hx-target="#run-panel"' in text
+    assert 'action="/runs"' not in text
+    assert 'method="post"' not in text.lower()
+
+
+def test_the_page_has_the_panel_the_run_swaps_into(client):
+    assert 'id="run-panel"' in client.get("/trades").text
+
+
+def test_an_in_flight_run_is_rendered_on_load(client, app):
+    """A reload mid-run must resume the trace, not lose it."""
+    run = app.state.runs.create("trade", 3, 2026, "8", supervised=False)
+    app.state.runs.publish(run, {
+        "kind": "tool_call", "name": "find_trade_targets", "args": {},
+        "display": "{}", "block": False})
+    text = client.get("/trades").text
+    assert "find_trade_targets" in text
+    assert f"/runs/{run.id}/stream" in text
+
+
+def test_a_finished_run_is_not_shown_as_in_flight(client, app):
+    run = app.state.runs.create("trade", 3, 2026, "8", supervised=False)
+    app.state.runs.finish(run, "done", decision_id="abc")
+    assert f"/runs/{run.id}/stream" not in client.get("/trades").text

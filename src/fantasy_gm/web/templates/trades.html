@@ -32,6 +32,18 @@
       </div>
         {% endif %}
     </section>
+
+    {# The trace opens here, in place. Rendering `active_run` on load is what
+       makes a mid-run reload resume rather than lose the run. #}
+    <section id="run-section">
+      <div id="run-panel">
+        {% if active_run %}
+          {% with run = active_run %}
+            {% include "partials/run_panel.html" %}
+          {% endwith %}
+        {% endif %}
+      </div>
+    </section>
   </div>
 
   {# RIGHT: needs table #}

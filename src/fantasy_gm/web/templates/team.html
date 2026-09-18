@@ -31,7 +31,9 @@
       {# The trace panel expands in place, right here. #}
       <div id="run-panel">
         {% if active_run %}
-          {% include "partials/run_panel.html" %}
+          {% with run = active_run %}
+            {% include "partials/run_panel.html" %}
+          {% endwith %}
         {% endif %}
       </div>
     </section>

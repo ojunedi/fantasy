@@ -691,3 +691,14 @@ tr.is-played .proj { opacity: 0.55; }
   .ledger__side--recv .ledger__val { order: 3; margin-left: auto; }
   .ledger__verdict { text-align: left; }
 }
+
+.trade-brief__form { margin-top: 18px; }
+.brief__label {
+  font-family: var(--condensed);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--black);
+  letter-spacing: 0.03em;
+  margin-bottom: 8px;
+}
+#run-section:not(:empty) { margin-top: 28px; }
