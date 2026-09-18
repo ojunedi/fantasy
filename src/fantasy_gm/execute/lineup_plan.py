@@ -51,10 +51,17 @@ def locked_conflicts(
         if not rp.is_locked:
             continue
         pid = rp.player.platform_id
+        # State the correction, not just the fault. This text is read by the
+        # model via `check_lineup_legality`, and "you are wrong" without "do
+        # this instead" invites it to guess again and burn another turn.
         if rp.is_starter and pid not in requested:
-            problems.append(f"{rp.player.name} has already played and cannot be benched.")
+            problems.append(
+                f"{rp.player.name} ({pid}) has already played and cannot be benched — "
+                f"keep him in the starters, in slot {rp.slot.value}.")
         elif not rp.is_starter and pid in requested:
-            problems.append(f"{rp.player.name} has already played and cannot be started.")
+            problems.append(
+                f"{rp.player.name} ({pid}) has already played and cannot be started — "
+                f"remove him from the starters and leave him on the bench.")
     return problems
 
 

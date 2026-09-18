@@ -352,9 +352,43 @@ class LineupToolContext(ToolContext):
         from fantasy_gm.execute.lineup_plan import locked_conflicts
         conflicts = locked_conflicts(self.roster().players, list(ids))
         if conflicts:
-            return "Illegal: " + " ".join(conflicts)
+            # Hand back the exact lineup that fixes it, so a correction costs one
+            # turn rather than a guess-and-recheck cycle against a hard step cap.
+            fixed = self._lock_respecting_starters(list(ids))
+            fix = (f" Correct starter_player_ids: {fixed}." if fixed else "")
+            return "Illegal: " + " ".join(conflicts) + fix
 
         return "Legal: all starters fit valid slots with no duplicates."
+
+    def _lock_respecting_starters(self, ids: list[str]) -> list[str] | None:
+        """The requested lineup with locked players forced back into place.
+
+        Returned only if it comes out legal, so the tool never suggests a fix
+        that is itself invalid.
+        """
+        from fantasy_gm.core.optimizer import optimize_lineup
+
+        players = self.roster().players
+        locked_in = [rp.player.platform_id for rp in players
+                     if rp.is_locked and rp.is_starter]
+        locked_out = {rp.player.platform_id for rp in players
+                      if rp.is_locked and not rp.is_starter}
+
+        keep = [i for i in ids if i not in locked_out]
+        keep += [pid for pid in locked_in if pid not in keep]
+
+        # Weight the kept set and let the tested optimizer find a legal
+        # arrangement; anyone it cannot slot is dropped from the proposal.
+        weights = {p.player.platform_id: (1.0 if p.player.platform_id in keep else 0.0)
+                   for p in players}
+        from fantasy_gm.core.optimizer import locks_from_roster
+        lineup = optimize_lineup([rp.player for rp in players], weights, self.settings,
+                                 locked=locks_from_roster(players))
+        result = [rp.player.platform_id for rp in lineup if rp.is_starter]
+        from fantasy_gm.execute.lineup_plan import locked_conflicts
+        if locked_conflicts(players, result):
+            return None
+        return result
 
     def _tool_get_opponent_defense(self, tool_input: dict) -> str:
         from fantasy_gm.agent.tools_ext.opponent_defense import tool_get_opponent_defense

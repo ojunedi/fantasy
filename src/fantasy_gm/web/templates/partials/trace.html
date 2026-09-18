@@ -38,6 +38,13 @@
   <span class="trace__detail">The model returned neither a tool call nor any text
     (finish_reason={{ e.finish_reason }}).</span>
 </div>
+{% elif e.kind == "step_limit" %}
+<div class="trace__row">
+  <span class="trace__mark trace__mark--warn">⚠</span>
+  <span class="trace__name">step limit</span>
+  <span class="trace__detail">Hit {{ e.limit }} graph steps without a decision —
+    recording a truncated run so the analysis is not lost.</span>
+</div>
 {% elif e.kind == "summary" %}
 <div class="trace__row trace__row--summary">
   <span class="trace__mark {{ 'trace__mark--done' if e.reached_terminal else 'trace__mark--warn' }}">

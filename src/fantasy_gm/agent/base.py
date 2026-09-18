@@ -27,6 +27,7 @@ from typing import Annotated, Any, Callable, TypedDict
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.errors import GraphRecursionError
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
@@ -70,6 +71,10 @@ class ToolContext:
     # both the agent loop and the LLM sub-agents draw from the same counter.
     llm_budget: int = 999
     llm_calls: int = 0
+
+    # Set when the graph hit its step limit instead of stopping on its own. The
+    # LLM budget is the intended stop condition, so this means something looped.
+    hit_step_limit: bool = False
 
     def llm_call_allowed(self) -> bool:
         return self.llm_calls < self.llm_budget
@@ -387,6 +392,29 @@ class GraphAgent(ABC):
                                     {"agent": "agent", END: END})
         return graph.compile(checkpointer=checkpointer)
 
+    @staticmethod
+    def _recursion_limit(max_iter: int, llm_budget: int) -> int:
+        """Graph step budget — a safety net, deliberately not the stop condition.
+
+        The LLM call budget is what is supposed to end a run: it forces a
+        terminal tool and degrades to a truncated record. So the step limit has
+        to sit *above* whatever that budget can consume, or it fires first and
+        crashes the run. Each LLM call can cost two steps (agent + tools), and
+        the reserved final turn costs a couple more.
+
+        Raising this does not make a run more expensive — `llm_budget` still
+        bounds the spend. It only stops the net from catching the normal path.
+        """
+        return 2 * max(max_iter, llm_budget) + 6
+
+    def _recover_state(self, app, config: dict) -> dict:
+        """Messages accumulated so far, read back from the checkpointer."""
+        try:
+            snapshot = app.get_state(config)
+            return dict(snapshot.values or {})
+        except Exception:
+            return {"messages": []}
+
     def decide(self, ctx: ToolContext, verbose: bool = True,
                emit: Callable[[dict], None] | None = None) -> DecisionRecord:
         """Run the graph and build the DecisionRecord.
@@ -404,20 +432,36 @@ class GraphAgent(ABC):
             app = self._compile(ctx, checkpointer, llm)
             max_iter = getattr(self, "max_tool_iterations", self.config.max_tool_iterations)
             config = {
-                "recursion_limit": max_iter * 2,
+                "recursion_limit": self._recursion_limit(max_iter, ctx.llm_budget),
                 "configurable": {"thread_id": self.thread_id(ctx)},
             }
             input_msg = {"messages": [HumanMessage(content=self.user_prompt(ctx))]}
-            if verbose or emit is not None:
-                from fantasy_gm.agent.tracer import stream_verbose
-                label = (f"{self._llm_description(llm)} · "
-                         f"{type(self).__name__} · "
-                         f"week {ctx.week} / {ctx.season}")
-                final_state = stream_verbose(
-                    app, input_msg, config, self.terminal_tools, label=label,
-                    full=(self.config.trace == "full"), emit=emit)
-            else:
-                final_state = app.invoke(input_msg, config=config)
+            try:
+                if verbose or emit is not None:
+                    from fantasy_gm.agent.tracer import stream_verbose
+                    label = (f"{self._llm_description(llm)} · "
+                             f"{type(self).__name__} · "
+                             f"week {ctx.week} / {ctx.season}")
+                    final_state = stream_verbose(
+                        app, input_msg, config, self.terminal_tools, label=label,
+                        full=(self.config.trace == "full"), emit=emit)
+                else:
+                    final_state = app.invoke(input_msg, config=config)
+            except GraphRecursionError:
+                # Never lose a run to the safety net. The analysis so far is in
+                # the checkpointer, and `build_record` already knows how to
+                # report a run that ended without a terminal tool: a truncated
+                # record keeps the work and tells the human what happened, where
+                # an exception throws away eight LLM calls' worth of analysis.
+                ctx.hit_step_limit = True
+                final_state = self._recover_state(app, config)
+                note = (f"  step limit ({config['recursion_limit']}) reached — "
+                        "recording a truncated run")
+                if emit is not None:
+                    emit({"kind": "step_limit",
+                          "limit": config["recursion_limit"]})
+                else:
+                    print(note, flush=True)
         finally:
             conn.close()
         return self.build_record(ctx, final_state["messages"])

@@ -158,3 +158,28 @@ def test_legality_still_catches_ordinary_position_errors(ctx):
     out = ctx.dispatch("check_lineup_legality",
                        {"starter_player_ids": ["qb", "rb", "w_lo"]})[0]
     assert out.startswith("Illegal")
+
+
+def test_legality_hands_back_a_corrected_lineup(ctx):
+    """Saying only "illegal" costs another guess-and-recheck round against a
+    hard step cap; the fix is returned so a correction takes one turn."""
+    out = ctx.dispatch("check_lineup_legality",
+                       {"starter_player_ids": ["qb", "rb", "w_hi", "w_mid", "flex"]})[0]
+    assert out.startswith("Illegal")
+    assert "Correct starter_player_ids:" in out
+    assert "w_lo" in out.split("Correct starter_player_ids:")[1]
+
+
+def test_the_suggested_correction_is_itself_legal(ctx):
+    import ast
+    out = ctx.dispatch("check_lineup_legality",
+                       {"starter_player_ids": ["qb", "rb", "w_hi", "w_mid", "flex"]})[0]
+    fixed = ast.literal_eval(out.split("Correct starter_player_ids:")[1].strip().rstrip("."))
+    recheck = ctx.dispatch("check_lineup_legality", {"starter_player_ids": fixed})[0]
+    assert recheck.startswith("Legal"), recheck
+
+
+def test_the_correction_names_the_slot_to_keep(ctx):
+    out = ctx.dispatch("check_lineup_legality",
+                       {"starter_player_ids": ["qb", "rb", "w_hi", "w_mid", "flex"]})[0]
+    assert "slot WR" in out

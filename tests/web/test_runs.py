@@ -324,3 +324,25 @@ def test_events_reach_an_open_stream_live(client, app, patched_worker):
                 break
         assert any("propose_lineup" in s for s in seen)
         assert any("get_my_injury_summary" in s for s in seen)
+
+
+def test_a_step_limit_event_is_rendered_in_the_trace(client, app, patched_worker):
+    """A run that hits the graph step limit must explain itself in the panel
+    rather than surfacing a raw GraphRecursionError."""
+    class HitsLimit:
+        def decide(self, ctx, verbose=True, emit=None):
+            emit({"kind": "step_limit", "limit": 22})
+            emit({"kind": "summary", "tool_count": 9, "elapsed": 30.0,
+                  "reached_terminal": False, "failed_count": 0, "failed_names": []})
+            return _decision_record()
+
+    app.state.agent_factory = lambda: HitsLimit()
+    _start(client)
+    run_id = list(app.state.runs._runs)[0]
+    _wait_for(lambda: app.state.runs.get(run_id), lambda r: r.status == "done")
+
+    text = client.get(f"/runs/{run_id}/panel").text
+    assert "step limit" in text
+    assert "22 graph steps" in text
+    assert "truncated" in text
+    assert "GraphRecursionError" not in text

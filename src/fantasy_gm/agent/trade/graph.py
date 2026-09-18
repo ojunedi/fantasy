@@ -239,8 +239,12 @@ class TradeGraphAgent(GraphAgent):
                 if isinstance(m, AIMessage) and isinstance(m.content, str)
             )
             out_of_budget = ctx.llm_calls >= ctx.llm_budget
-            cut_off = ("the LLM call budget ran out mid-analysis."
-                       if out_of_budget else "the agent stopped without proposing.")
+            if ctx.hit_step_limit:
+                cut_off = "it looped without reaching a decision."
+            elif out_of_budget:
+                cut_off = "the LLM call budget ran out mid-analysis."
+            else:
+                cut_off = "the agent stopped without proposing."
             viable = self._viable(ctx)
             if viable:
                 # The model never submitted, but the scoring that would have
@@ -268,8 +272,11 @@ class TradeGraphAgent(GraphAgent):
                 recommendation = {
                     "abstained": True,
                     "truncated": True,
-                    "reason": ("LLM call budget exhausted before a terminal tool"
+                    "reason": ("graph step limit reached before a terminal tool"
+                               if ctx.hit_step_limit else
+                               "LLM call budget exhausted before a terminal tool"
                                if out_of_budget else "no terminal tool called"),
+                    "hit_step_limit": ctx.hit_step_limit,
                     "llm_calls": ctx.llm_calls,
                     "llm_budget": ctx.llm_budget,
                     "evaluated_packages": _evaluated_packages(ctx.call_log),
