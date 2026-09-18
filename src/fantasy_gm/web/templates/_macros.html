@@ -1,19 +1,27 @@
 {# Shared row renderers. Slot labels are the leftmost data column, not decoration. #}
 
-{% macro player_row(row, show_opponent=True) %}
-<tr class="{{ 'is-swap' if row.is_swap else '' }}">
+{% macro player_row(row, show_opponent=True, show_points=True) %}
+<tr class="{{ 'is-swap' if row.is_swap else '' }}{{ ' is-played' if row.has_played else '' }}">
   <td class="slot">{{ row.slot }}</td>
   <td class="player">
     {{ row.name }}
     {% if row.status_label %}
     <span class="status--{{ row.status }}">{{ row.status_label }}</span>
     {% endif %}
+    {# Locked means the game kicked off: ESPN refuses to move them at all. #}
+    {% if row.is_locked %}<span class="tag tag--quiet" title="Game played — cannot be moved">locked</span>{% endif %}
   </td>
   <td class="team-opp">{{ row.nfl_team }}</td>
   {% if show_opponent %}<td class="team-opp">{{ row.opponent }}</td>{% endif %}
+  {% if show_points %}
+  <td class="num {{ 'scored' if row.has_played else '' }}">
+    {% if row.has_played %}{{ row.actual | points(1) }}{% else %}—{% endif %}
+  </td>
+  {% endif %}
   <td class="num proj">{{ row.projection | points(1) }}</td>
   <td class="num">
-    {% if row.optimizer == "start" %}<span class="delta--up">start</span>
+    {% if row.is_locked %}<span class="stamp">final</span>
+    {% elif row.optimizer == "start" %}<span class="delta--up">start</span>
     {% elif row.optimizer == "bench" %}<span class="delta--down">bench</span>
     {% else %}—{% endif %}
   </td>

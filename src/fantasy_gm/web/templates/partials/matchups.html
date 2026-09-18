@@ -9,11 +9,16 @@
     {% for game in matchups.rows %}
       {% for side in game.sides %}
       <tr class="{{ 'is-mine' if side.is_mine else '' }}">
-        <td class="player">{{ side.team_name }}</td>
+        <td class="player">
+          {{ side.team_name }}
+          {% if game.state != "proj" and side.projected is not none %}
+          <div class="stamp">proj: {{ side.projected | points(1) }}</div>
+          {% endif %}
+        </td>
         <td class="num proj">{{ side.points | points(1) }}</td>
         <td class="num">
           {% if loop.first %}
-            <span class="stamp">{{ "final" if game.is_complete else "proj" }}</span>
+            <span class="stamp {{ 'is-live' if game.state == 'live' else '' }}">{{ game.state }}</span>
           {% endif %}
         </td>
       </tr>

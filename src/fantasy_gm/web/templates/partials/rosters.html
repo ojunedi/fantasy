@@ -13,12 +13,12 @@
   </summary>
   <table>
     <thead>
-      <tr><th>Slot</th><th>Player</th><th>Team</th><th class="num">Proj</th><th class="num"></th></tr>
+      <tr><th>Slot</th><th>Player</th><th>Team</th><th class="num">Pts</th><th class="num">Proj</th><th class="num"></th></tr>
     </thead>
     <tbody>
       {% for row in team.starters %}{{ player_row(row, False) }}{% endfor %}
       {% if team.bench %}
-      <tr class="divider"><td colspan="5">Bench</td></tr>
+      <tr class="divider"><td colspan="6">Bench</td></tr>
       {% for row in team.bench %}{{ player_row(row, False) }}{% endfor %}
       {% endif %}
     </tbody>

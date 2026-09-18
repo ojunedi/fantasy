@@ -65,10 +65,14 @@ def matchups_partial(request: Request,
     week = reads.current_week(adapter, settings, cache)
     rows = reads.standings(adapter, cache, settings.season)
     games = reads.all_matchups(adapter, cache, week, settings.season, rows)
+    rosters = reads.live_rosters(adapter, cache, week, settings.season)
+    projections = reads.projections(adapter, cache, week, settings.season)
     stamp = context.cache_stamp(adapter, settings.season,
                                 {"view": "mMatchup", "scoringPeriodId": week})
     return _render(request, "partials/matchups.html", {
-        "matchups": context.matchups_view(games, rows, settings.team_id),
+        "matchups": context.matchups_view(
+            games, rows, settings.team_id,
+            live_totals=context.team_live_totals(rosters, projections)),
         "week": week,
         "stamp": stamp,
     })

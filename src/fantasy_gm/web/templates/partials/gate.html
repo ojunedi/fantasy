@@ -53,22 +53,42 @@
         </thead>
         <tbody>
           {% for c in d.choices %}
-          <tr>
+          <tr class="{{ 'is-played' if c.is_locked else '' }}">
             <td>
+              {# A locked player's game has kicked off. The box is disabled and
+                 mirrored by a hidden field, so his current state still posts
+                 back but cannot be changed. #}
               <input type="checkbox" name="starter_player_ids" value="{{ c.player_id }}"
-                     style="width:auto;" {{ "checked" if c.selected }}>
+                     style="width:auto;" {{ "checked" if c.selected }}
+                     {{ "disabled" if c.is_locked }}>
+              {% if c.is_locked and c.selected %}
+              <input type="hidden" name="starter_player_ids" value="{{ c.player_id }}">
+              {% endif %}
             </td>
             <td class="player">
               {{ c.name }}
               {% if c.is_alert %}<span class="status--out">{{ c.status | upper }}</span>{% endif %}
+              {% if c.is_locked %}
+              <span class="tag tag--quiet" title="Game played — cannot be moved">locked</span>
+              {% endif %}
             </td>
             <td class="slot">{{ c.position }}</td>
-            <td class="num proj">{{ c.projection | points(1) }}</td>
+            <td class="num proj">
+              {% if c.is_locked and c.actual is not none %}
+                <span class="scored">{{ c.actual | points(1) }}</span>
+              {% else %}{{ c.projection | points(1) }}{% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
-      <p class="note">Ticking a different set records this as a modification.</p>
+      <p class="note">
+        Ticking a different set records this as a modification.
+        {% if d.locked_choices %}
+        Players marked locked have already played — ESPN will not move them, so
+        they are fixed here.
+        {% endif %}
+      </p>
     </fieldset>
   </details>
 

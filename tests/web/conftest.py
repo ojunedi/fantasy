@@ -114,6 +114,44 @@ def roster() -> Roster:
                   players=players, week=3, season=2026)
 
 
+# The opponent's lineup. Needed because the live matchup total is summed from
+# both rosters rather than taken from ESPN's `totalPoints`, which reads 0.0.
+OPPONENT_SQUAD = [
+    ("Patrick Mahomes", Position.QB,  "KC",  21.0, PlayerStatus.ACTIVE),
+    ("Saquon Barkley",  Position.RB,  "PHI", 17.5, PlayerStatus.ACTIVE),
+    ("De'Von Achane",   Position.RB,  "MIA", 13.0, PlayerStatus.ACTIVE),
+    ("CeeDee Lamb",     Position.WR,  "DAL", 16.0, PlayerStatus.ACTIVE),
+    ("Garrett Wilson",  Position.WR,  "NYJ", 12.0, PlayerStatus.ACTIVE),
+    ("George Kittle",   Position.TE,  "SF",  10.5, PlayerStatus.ACTIVE),
+    ("Chris Olave",     Position.WR,  "NO",  11.0, PlayerStatus.ACTIVE),
+    ("Bills D/ST",      Position.DST, "BUF",  7.0, PlayerStatus.ACTIVE),
+    ("Jake Bates",      Position.K,   "DET",  8.0, PlayerStatus.ACTIVE),
+]
+
+
+@pytest.fixture
+def opponent_projections() -> dict[str, float]:
+    return {str(200 + i): proj for i, (_, _, _, proj, _) in enumerate(OPPONENT_SQUAD)}
+
+
+@pytest.fixture
+def opponent_roster() -> Roster:
+    slots = [Position.QB, Position.RB, Position.RB, Position.WR, Position.WR,
+             Position.TE, Position.FLEX, Position.DST, Position.K]
+    players = []
+    for i, (name, position, team, _, status) in enumerate(OPPONENT_SQUAD):
+        players.append(RosterPlayer(
+            player=Player(
+                platform_id=str(200 + i), name=name, position=position,
+                eligible_positions=_eligible(position), nfl_team=team, status=status,
+            ),
+            slot=slots[i],
+            is_starter=True,
+        ))
+    return Roster(team_id="6", team_name="Team Six", owner_name="",
+                  players=players, week=3, season=2026)
+
+
 @pytest.fixture
 def standings() -> list[TeamStanding]:
     rows = [
@@ -141,9 +179,11 @@ def matchup() -> Matchup:
 class FakeAdapter:
     """Stands in for ESPNAdapter. Records calls so tests can assert on caching."""
 
-    def __init__(self, roster, league_settings, standings, matchup, projections):
+    def __init__(self, roster, league_settings, standings, matchup, projections,
+                 opponent_roster=None):
         self.league_id = "1660218687"
         self._roster = roster
+        self._opponent_roster = opponent_roster
         self._settings = league_settings
         self._standings = standings
         self._matchup = matchup
@@ -168,8 +208,11 @@ class FakeAdapter:
                       owner_name="", players=[], week=week, season=season)
 
     def get_all_rosters(self, week: int, season: int, fresh: bool = False):
-        self.calls.append("get_all_rosters")
-        return [self._roster]
+        self.calls.append("get_all_rosters_fresh" if fresh else "get_all_rosters")
+        rosters = [self._roster]
+        if self._opponent_roster is not None:
+            rosters.append(self._opponent_roster)
+        return rosters
 
     def get_standings(self, season: int):
         self.calls.append("get_standings")
@@ -198,8 +241,37 @@ class FakeAdapter:
 
 
 @pytest.fixture
-def fake_adapter(roster, league_settings, standings, matchup, projections):
-    return FakeAdapter(roster, league_settings, standings, matchup, projections)
+def fake_adapter(roster, league_settings, standings, matchup, projections,
+                 opponent_roster, opponent_projections):
+    return FakeAdapter(roster, league_settings, standings, matchup,
+                       {**projections, **opponent_projections},
+                       opponent_roster=opponent_roster)
+
+
+def lock_starter(roster_obj, position: Position, actual: float):
+    """Mark the first starter at `position` as having played, and return them.
+
+    Selecting by position rather than by player name keeps these tests from
+    depending on who happens to be in the fixture squad.
+    """
+    for rp in roster_obj.players:
+        if rp.is_starter and rp.slot == position:
+            rp.is_locked = True
+            rp.actual_points = actual
+            return rp
+    raise AssertionError(f"no starter in slot {position}")
+
+
+def starter_total(roster_obj, projections_map) -> float:
+    """What the page should show: banked points where a game is done,
+    projections everywhere else. Mirrors `core.optimizer.live_score`."""
+    total = 0.0
+    for rp in roster_obj.players:
+        if not rp.is_starter:
+            continue
+        total += (rp.actual_points if rp.actual_points is not None
+                  else projections_map.get(rp.player.platform_id, 0.0))
+    return total
 
 
 @pytest.fixture

@@ -13,6 +13,7 @@
       <th>Player</th>
       <th>Team</th>
       {% if view.has_opponents %}<th>Opp</th>{% endif %}
+      <th class="num">Pts</th>
       <th class="num">Proj</th>
       <th class="num">Optimizer</th>
     </tr>
@@ -23,7 +24,7 @@
     {% endfor %}
 
     <tr class="divider">
-      <td colspan="{{ 6 if view.has_opponents else 5 }}">Bench</td>
+      <td colspan="{{ 7 if view.has_opponents else 6 }}">Bench</td>
     </tr>
 
     {% for row in view.bench %}
@@ -33,12 +34,24 @@
 </table>
 
 <p class="note">
-  Current lineup projects <strong>{{ view.current_points | points(1) }}</strong>.
+  {% if view.any_played %}
+    Scored <strong>{{ view.banked_points | points(1) }}</strong> from
+    {{ view.played_count }} of {{ view.starter_count }} starters so far;
+    projected final {{ view.live_points | points(1) }}.
+  {% else %}
+    Current lineup projects <strong>{{ view.current_points | points(1) }}</strong>.
+  {% endif %}
   {% if view.swap_count %}
     The optimizer's legal best is {{ view.optimal_points | points(1) }} —
     <strong>{{ view.optimizer_gain | signed(1) }}</strong> from
     {{ view.swap_count }} swap{{ "" if view.swap_count == 1 else "s" }}.
   {% else %}
     The optimizer agrees with it.
+  {% endif %}
+  {% if view.locked_count %}
+    {{ view.locked_count }} player{{ "" if view.locked_count == 1 else "s" }}
+    already played and {{ "is" if view.locked_count == 1 else "are" }} locked —
+    ESPN will not move {{ "them" if view.locked_count > 1 else "him" }}, so no change
+    is offered {{ "there" }}.
   {% endif %}
 </p>

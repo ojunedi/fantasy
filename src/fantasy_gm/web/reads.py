@@ -51,6 +51,25 @@ def all_rosters(adapter: Any, reads: ReadCache, week: int, season: int):
                      lambda: adapter.get_all_rosters(week, season))
 
 
+# Lock state and banked points both change at kickoff, so the in-week roster is
+# read past the adapter's 1h disk cache. The 60s memo still stops one page with
+# three partials from fetching it three times.
+LIVE_ROSTER_TTL = 30.0
+
+
+def live_rosters(adapter: Any, cache: ReadCache, week: int, season: int,
+                 fresh: bool = False) -> list:
+    """Every team's roster, fresh off ESPN rather than from the disk cache.
+
+    `get_all_rosters(fresh=True)` is one request and yields the opponent's
+    lineup too, which is what the live matchup total needs.
+    """
+    if fresh:
+        return adapter.get_all_rosters(week, season, fresh=True)
+    return cache.get(("live_rosters", week, season),
+                     lambda: adapter.get_all_rosters(week, season, fresh=True))
+
+
 def matchup(adapter: Any, reads: ReadCache, team_id: str, week: int, season: int):
     """None rather than an exception: a bye or an unscheduled week is normal,
     and the rest of the page is still worth rendering."""

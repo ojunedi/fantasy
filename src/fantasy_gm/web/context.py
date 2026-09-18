@@ -14,7 +14,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fantasy_gm.core.optimizer import optimize_lineup, projected_score
+from fantasy_gm.core.optimizer import (
+    live_score,
+    locks_from_roster,
+    optimize_lineup,
+    projected_score,
+)
 from fantasy_gm.execute.lineup_plan import slot_name
 from fantasy_gm.models import (
     DecisionRecord,
@@ -70,6 +75,10 @@ def _player_row(rp: RosterPlayer, projections: dict[str, float],
     status = rp.player.status.value.lower()
     return {
         "player_id": pid,
+        # A played player's actual score is a fact; his projection is history.
+        "actual": rp.actual_points,
+        "has_played": rp.actual_points is not None,
+        "is_locked": rp.is_locked,
         "name": rp.player.name,
         "slot": rp.slot.value.upper(),
         "position": rp.player.position.value.upper(),
@@ -115,7 +124,11 @@ def roster_view(
     optimizer scores *lineups*, so a per-player figure would be invented.
     """
     opponents = _opponent_map(roster, signals)
-    optimal = optimize_lineup([rp.player for rp in roster.players], projections, settings)
+    # Locked players are pinned: a "better" lineup that moves someone whose game
+    # has kicked off is one ESPN will reject, so it is not an option to offer.
+    locked = locks_from_roster(roster.players)
+    optimal = optimize_lineup([rp.player for rp in roster.players], projections,
+                              settings, locked=locked)
     optimal_starters = {rp.player.platform_id for rp in optimal if rp.is_starter}
     current_starters = {rp.player.platform_id for rp in roster.players if rp.is_starter}
 
@@ -135,6 +148,11 @@ def roster_view(
     current_points = projected_score(roster.players, projections)
     optimal_points = projected_score(optimal, projections)
 
+    # The optimal lineup carries no lock/actual data (optimize_lineup returns
+    # fresh RosterPlayers), so the live comparison uses the roster's own rows.
+    starter_rows = [rp for rp in roster.players if rp.is_starter]
+    played = [rp for rp in starter_rows if rp.actual_points is not None]
+
     return {
         "starters": [r for r in rows if r["is_starter"]],
         "bench": [r for r in rows if not r["is_starter"]],
@@ -146,7 +164,35 @@ def roster_view(
         "roster_count": len(rows),
         "team_name": roster.team_name,
         "has_opponents": bool(opponents),
+        # Live state: banked where games are done, projected where they are not.
+        "live_points": live_score(starter_rows, projections),
+        "banked_points": sum(rp.actual_points or 0.0 for rp in played),
+        "played_count": len(played),
+        "starter_count": len(starter_rows),
+        "locked_count": len(locked),
+        "any_played": bool(played),
+        "all_played": bool(starter_rows) and len(played) == len(starter_rows),
     }
+
+
+def team_live_totals(rosters: list[Roster], projections: dict[str, float]) -> dict[str, dict]:
+    """team_id -> live total, banked total, and how much of the lineup has played.
+
+    ESPN's own `totalPoints` on the matchup view reads 0.0 for this league even
+    after a game has been played, so the totals shown are summed from the
+    rosters with `core.live_score` rather than taken on trust.
+    """
+    out: dict[str, dict] = {}
+    for roster in rosters:
+        starters = [rp for rp in roster.players if rp.is_starter]
+        played = [rp for rp in starters if rp.actual_points is not None]
+        out[roster.team_id] = {
+            "live": live_score(starters, projections),
+            "banked": sum(rp.actual_points or 0.0 for rp in played),
+            "played": len(played),
+            "starters": len(starters),
+        }
+    return out
 
 
 def chyron_view(
@@ -156,43 +202,108 @@ def chyron_view(
     season: int,
     team_name: str,
     standings: list[TeamStanding] | None = None,
+    live_totals: dict[str, dict] | None = None,
 ) -> dict:
-    """The score bar. Shows the projected margin — the repo has no win
-    probability function, and inventing one would violate D-017."""
+    """The score bar.
+
+    The headline number is **points actually scored** once anybody has played;
+    the projected final is secondary. Blending banked and projected points into
+    one headline overstates the score — 5.3 scored is not 119.2.
+
+    Before kickoff nobody has scored, so the projection leads instead and is
+    labelled as such. There is no win probability anywhere here: the repo has
+    no such function and inventing one would violate D-017.
+    """
     # Standings carry the real team names; ESPN's mRoster and mMatchup views
     # return a bare id ("Team 8"), so standings win the join when present.
     names = {s.team_id: s.team_name for s in (standings or [])}
     team_name = names.get(team_id) or team_name
+    live_totals = live_totals or {}
+
+    def side_view(side, name):
+        totals = live_totals.get(side.team_id) if side is not None else None
+        if totals is not None:
+            return {
+                "name": name,
+                "scored": totals["banked"],
+                "projected": totals["live"],
+                "played": totals["played"],
+                "starters": totals["starters"],
+            }
+        fallback = None if side is None else (
+            side.actual_score if matchup is not None and matchup.is_complete
+            else side.projected_score)
+        return {"name": name, "scored": None, "projected": fallback,
+                "played": 0, "starters": 0}
+
+    empty_side = {"name": "", "scored": None, "projected": None,
+                  "played": 0, "starters": 0, "points": None}
 
     if matchup is None:
+        totals = live_totals.get(team_id)
+        mine = {
+            "name": team_name,
+            "scored": totals["banked"] if totals else None,
+            "projected": totals["live"] if totals else None,
+            "played": totals["played"] if totals else 0,
+            "starters": totals["starters"] if totals else 0,
+        }
+        played = mine["played"]
+        mine["points"] = mine["scored"] if played else mine["projected"]
         return {"has_matchup": False, "week": week, "season": season,
-                "mine": {"name": team_name, "points": None},
-                "away": {"name": "", "points": None}}
+                "state": "live" if played else "proj",
+                "any_played": bool(played),
+                "mine": mine, "away": dict(empty_side)}
 
     mine_side = matchup.home if matchup.home.team_id == team_id else matchup.away
     other_side = matchup.away if matchup.home.team_id == team_id else matchup.home
 
-    def points(side):
-        return side.actual_score if matchup.is_complete else side.projected_score
+    mine = side_view(mine_side, team_name)
+    away = side_view(other_side,
+                     names.get(other_side.team_id, f"Team {other_side.team_id}"))
 
-    mine_pts, other_pts = points(mine_side), points(other_side)
-    margin = None if mine_pts is None or other_pts is None else mine_pts - other_pts
+    # How settled this is, so no label overclaims.
+    tracked = [s for s in (mine, away) if s["starters"]]
+    played = sum(s["played"] for s in tracked)
+    starters = sum(s["starters"] for s in tracked)
+    if not tracked:
+        state = "final" if matchup.is_complete else "proj"
+    elif played == 0:
+        state = "proj"
+    elif played == starters:
+        state = "final"
+    else:
+        state = "live"
 
-    # Bar geometry only: where the marker sits between the two totals.
-    total = (mine_pts or 0) + (other_pts or 0)
-    share = (mine_pts / total * 100) if total else 50.0
+    any_played = state in ("live", "final")
+
+    def headline(side):
+        return side["scored"] if any_played else side["projected"]
+
+    mine_pts, away_pts = headline(mine), headline(away)
+
+    def margin_of(a, b):
+        return None if a is None or b is None else a - b
+
+    # The bar tracks the projected outcome, which is the informative comparison
+    # mid-week; the headline numbers are what has actually been scored.
+    proj_mine, proj_away = mine["projected"], away["projected"]
+    total = (proj_mine or 0) + (proj_away or 0)
+    share = (proj_mine / total * 100) if total else 50.0
 
     return {
         "has_matchup": True,
         "week": week,
         "season": season,
         "is_complete": matchup.is_complete,
-        "mine": {"name": team_name, "points": mine_pts},
-        "away": {
-            "name": names.get(other_side.team_id, f"Team {other_side.team_id}"),
-            "points": other_pts,
-        },
-        "margin": margin,
+        "state": state,
+        "any_played": any_played,
+        "played": played,
+        "total_starters": starters,
+        "mine": {**mine, "points": mine_pts},
+        "away": {**away, "points": away_pts},
+        "margin": margin_of(mine_pts, away_pts),
+        "projected_margin": margin_of(proj_mine, proj_away),
         "share": share,
         "bar_left": min(share, 50.0),
         "bar_width": abs(share - 50.0),
@@ -218,22 +329,52 @@ def standings_view(standings: list[TeamStanding], my_team_id: str) -> dict:
 
 
 def matchups_view(matchups: list[Matchup], standings: list[TeamStanding],
-                  my_team_id: str) -> dict:
-    """Two-line rows: every game this week, mine marked."""
+                  my_team_id: str, live_totals: dict[str, dict] | None = None) -> dict:
+    """Two-line rows: every game this week, mine marked.
+
+    Uses the summed live totals where available, for the same reason the chyron
+    does — ESPN's `totalPoints` reads 0.0 here.
+    """
     names = {s.team_id: s.team_name for s in standings}
+    live_totals = live_totals or {}
     rows = []
     for m in matchups:
         sides = []
         for side in (m.home, m.away):
+            totals = live_totals.get(side.team_id)
             sides.append({
                 "team_id": side.team_id,
                 "team_name": names.get(side.team_id, f"Team {side.team_id}"),
-                "points": side.actual_score if m.is_complete else side.projected_score,
+                # Same contract as the chyron: scored leads, projected is shown
+                # alongside it, and neither is ever presented as the other.
+                "scored": totals["banked"] if totals else None,
+                "projected": (totals["live"] if totals else
+                              (side.actual_score if m.is_complete
+                               else side.projected_score)),
+                "played": totals["played"] if totals else 0,
+                "starters": totals["starters"] if totals else 0,
                 "is_mine": side.team_id == my_team_id,
             })
+
+        played = sum(s["played"] for s in sides)
+        starters = sum(s["starters"] for s in sides)
+        if not starters:
+            state = "final" if m.is_complete else "proj"
+        elif played == 0:
+            state = "proj"
+        elif played == starters:
+            state = "final"
+        else:
+            state = "live"
+
+        for side in sides:
+            side["points"] = (side["scored"] if state in ("live", "final")
+                              else side["projected"])
+
         rows.append({
             "week": m.week,
             "is_complete": m.is_complete,
+            "state": state,
             "is_mine": any(s["is_mine"] for s in sides),
             "sides": sides,
         })
@@ -344,6 +485,10 @@ def decision_view(record: DecisionRecord, roster: Roster | None = None,
                 "projection": projections.get(rp.player.platform_id),
                 "status": rp.player.status.value.lower(),
                 "is_alert": rp.player.status.value.lower() in ALERT_STATUSES,
+                # Locked players cannot be moved either way, so the form must
+                # not invite a change ESPN would reject.
+                "is_locked": rp.is_locked,
+                "actual": rp.actual_points,
                 "selected": rp.player.platform_id in starter_ids,
             })
 
@@ -353,6 +498,7 @@ def decision_view(record: DecisionRecord, roster: Roster | None = None,
         "starters": starters,
         "changes": changes,
         "choices": choices,
+        "locked_choices": [c for c in choices if c["is_locked"]],
         "staleness": record.signals_staleness or {},
         "what_would_change_this": rec.get("what_would_change_this"),
         "missing_information": rec.get("missing_information") or [],

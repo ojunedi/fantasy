@@ -11,16 +11,24 @@ def page(client):
     return resp.text
 
 
-def test_chyron_shows_both_projected_totals(page):
-    assert "118.4" in page
-    assert "104.7" in page
+def test_chyron_shows_both_team_totals(page, roster, opponent_roster, fake_adapter):
+    """Totals are summed from both rosters, because ESPN's own `totalPoints`
+    reads 0.0 for this league even after a game has been played."""
+    from tests.web.conftest import starter_total
+    proj = fake_adapter._projections
+    assert f"{starter_total(roster, proj):.1f}" in page
+    assert f"{starter_total(opponent_roster, proj):.1f}" in page
 
 
-def test_chyron_shows_the_projected_margin_not_a_win_probability(page):
+def test_chyron_shows_the_margin_not_a_win_probability(page, roster, opponent_roster,
+                                                       fake_adapter):
     """D-017: there is no win-probability function in this repo, so the hero
     must show the margin we actually have and nothing invented."""
-    assert "+13.7" in page
-    assert "projected margin" in page
+    from tests.web.conftest import starter_total
+    proj = fake_adapter._projections
+    margin = starter_total(roster, proj) - starter_total(opponent_roster, proj)
+    assert f"{margin:+.1f}" in page
+    assert "margin" in page
     assert "win probability" not in page.lower()
     assert "win %" not in page.lower()
 

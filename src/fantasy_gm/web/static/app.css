@@ -432,3 +432,26 @@ details pre {
   .chyron__score { gap: 10px; }
   .nav__inner { gap: 16px; overflow-x: auto; }
 }
+
+/* Points already scored are settled fact — rendered in true black, while a
+   projection stays secondary. A locked row is tinted to show it is fixed. */
+.scored { color: var(--black); font-weight: 600; }
+tr.is-played td { background: var(--field); }
+tr.is-played .proj { opacity: 0.55; }
+.chyron__vs--live { color: var(--live); opacity: 1; }
+
+/* Each side of the chyron stacks its name over its projected final, so the
+   headline stays the points actually scored. */
+.chyron__ident { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.chyron__ident--away { align-items: flex-end; }
+
+.chyron__proj {
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.stamp.is-live { color: #8A6A00; font-weight: 600; }

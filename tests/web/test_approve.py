@@ -5,7 +5,8 @@ from datetime import datetime
 
 import pytest
 
-from fantasy_gm.models import DecisionRecord, DecisionType, HumanResponse
+from fantasy_gm.models import DecisionRecord, DecisionType, HumanResponse, Position
+from tests.web.conftest import lock_starter
 
 # 100 Josh Allen, 102 Breece Hall, 103 Chase, 104 Nacua, 105 McBride,
 # 106 Waddle, 107 Ravens, 108 Butker, 101 Bijan
@@ -201,3 +202,48 @@ def test_respond_to_unknown_decision_is_a_404(client):
     import uuid
     resp = client.post(f"/decisions/{uuid.uuid4()}/respond", data={"action": "approve"})
     assert resp.status_code == 404
+
+
+# ------------------------------------------------------- locked players
+
+def test_a_locked_player_is_never_moved_even_if_posted(client, app, store, roster):
+    """The disabled checkbox is client-side only. Someone posting the form by
+    hand must still not be able to generate a move ESPN would reject with 409."""
+    locked = lock_starter(roster, Position.WR, actual=5.3)
+    locked_id = locked.player.platform_id
+
+    record = _record()
+    store.save(record)
+
+    # Deliberately ask to bench the locked player and start a bench WR.
+    mine = [p for p in AGENT_STARTERS if p != locked_id] + ["109"]
+    resp = _respond(client, record, action="modify",
+                    override_reason="posting this by hand",
+                    starter_player_ids=mine)
+    assert resp.status_code == 200
+
+    # Inspect the plan the server actually built, not the rendered HTML.
+    plan = app.state.executor.plan_set_lineup("8", record.week, record.season, mine)
+    assert locked_id not in {m.player_id for m in plan.moves}, \
+        "a locked player must never appear as a move"
+    assert any("cannot be benched" in n for n in plan.notes)
+
+
+def test_the_plan_explains_a_locked_conflict(client, store, roster):
+    locked_id = lock_starter(roster, Position.WR, actual=5.3).player.platform_id
+    record = _record()
+    store.save(record)
+    mine = [p for p in AGENT_STARTERS if p != locked_id] + ["109"]
+    _respond(client, record, action="modify", override_reason="by hand",
+             starter_player_ids=mine)
+    plan = client.post(f"/decisions/{record.id}/plan").text
+    assert "cannot be benched" in plan
+
+
+def test_the_modify_form_disables_locked_players(client, store, roster):
+    lock_starter(roster, Position.WR, actual=5.3)
+    record = _record()
+    store.save(record)
+    page = client.get(f"/decisions/{record.id}").text
+    assert "disabled" in page
+    assert "have already played" in page

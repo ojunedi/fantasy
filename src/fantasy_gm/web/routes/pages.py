@@ -53,15 +53,22 @@ def build_team_context(request: Request, adapter, settings: WebSettings,
     week = reads.current_week(adapter, settings, cache)
     season = settings.season
     league = reads.league_settings(adapter, season)
-    roster = reads.roster(adapter, cache, settings.team_id, week, season, fresh=fresh)
     projections = reads.projections(adapter, cache, week, season)
-    signals = reads.signals(adapter, cache, roster, week, season)
     standings = reads.standings(adapter, cache, season)
     matchup = reads.matchup(adapter, cache, settings.team_id, week, season)
 
+    # Every roster in one read: the opponent's is needed for the live score, and
+    # `live_rosters` bypasses the 1h disk cache because lock state and banked
+    # points both change the moment a game kicks off.
+    rosters = reads.live_rosters(adapter, cache, week, season, fresh=fresh)
+    roster = next((r for r in rosters if r.team_id == settings.team_id),
+                  reads.roster(adapter, cache, settings.team_id, week, season))
+    signals = reads.signals(adapter, cache, roster, week, season)
+
     view = context.roster_view(roster, projections, league, signals)
     chyron = context.chyron_view(matchup, settings.team_id, week, season,
-                                 roster.team_name, standings)
+                                 roster.team_name, standings,
+                                 live_totals=context.team_live_totals(rosters, projections))
 
     stamps = {
         "projections": context.cache_stamp(
