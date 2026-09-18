@@ -167,13 +167,30 @@ class LineupToolContext(ToolContext):
     # ---- individual tools ----------------------------------------------
 
     def _tool_get_roster(self, _: dict) -> str:
+        players = self.roster().players
         lines = ["Current roster:"]
-        for rp in self.roster().players:
+        for rp in players:
             tag = "STARTER" if rp.is_starter else "bench"
+            # LOCKED is load-bearing for the model: the player's game has been
+            # played, so points are final and ESPN refuses to move them.
+            lock = ""
+            if rp.is_locked:
+                scored = ("?" if rp.actual_points is None
+                          else f"{rp.actual_points:.1f}")
+                lock = f" | LOCKED (played, scored {scored}, CANNOT be moved)"
             lines.append(
                 f"  {rp.player.platform_id} | {rp.player.name} ({rp.player.position.value}) "
                 f"| slot={rp.slot.value} | {tag} | status={rp.player.status.value} "
-                f"| eligible={[p.value for p in rp.player.eligible_positions]}"
+                f"| eligible={[p.value for p in rp.player.eligible_positions]}{lock}"
+            )
+        locked = [rp for rp in players if rp.is_locked]
+        if locked:
+            lines.append(
+                "NOTE: " + ", ".join(rp.player.name for rp in locked)
+                + f" {'has' if len(locked) == 1 else 'have'} already played. "
+                "Keep them exactly where they are — any lineup that starts or "
+                "benches them differently is rejected by ESPN. Do not mention "
+                "moving them in your recommendation."
             )
         return "\n".join(lines)
 
@@ -284,7 +301,12 @@ class LineupToolContext(ToolContext):
         adjustments = tool_input.get("projections") or {}
         proj.update({k: float(v) for k, v in adjustments.items()})
 
-        lineup = optimize_lineup(players, proj, self.settings)
+        # Players whose game has kicked off cannot be moved at all: ESPN rejects
+        # the whole transaction (409 TRAN_LINEUP_LOCKED). Optimize around them.
+        from fantasy_gm.core.optimizer import locks_from_roster
+        locked = locks_from_roster(self.roster().players)
+
+        lineup = optimize_lineup(players, proj, self.settings, locked=locked)
         total = projected_score(lineup, proj)
         lines = [f"Optimal lineup (projected total: {total:.2f}"
                  + (f", with {len(adjustments)} adjusted projections):" if adjustments else "):")]
@@ -294,6 +316,12 @@ class LineupToolContext(ToolContext):
                              f"({rp.player.platform_id}) | proj={proj.get(rp.player.platform_id, 0.0)}")
         lines.append("  bench: " + ", ".join(
             rp.player.name for rp in lineup if not rp.is_starter))
+        if locked:
+            names = {rp.player.platform_id: rp.player.name
+                     for rp in self.roster().players}
+            lines.append("  LOCKED (already played — cannot be moved, do not "
+                         "propose changing them): "
+                         + ", ".join(sorted(names.get(pid, pid) for pid in locked)))
         return "\n".join(lines)
 
     def _tool_check_lineup_legality(self, tool_input: dict) -> str:
@@ -315,10 +343,18 @@ class LineupToolContext(ToolContext):
         from fantasy_gm.core.optimizer import optimize_lineup as _opt
         result = _opt(starters, proj, self.settings)
         assigned_starters = {rp.player.platform_id for rp in result if rp.is_starter}
-        if assigned_starters == set(ids):
-            return "Legal: all starters fit valid slots with no duplicates."
-        return ("Illegal: these players cannot all fit starter slots simultaneously "
-                "(position constraints).")
+        if assigned_starters != set(ids):
+            return ("Illegal: these players cannot all fit starter slots simultaneously "
+                    "(position constraints).")
+
+        # A lineup that moves a locked player is not merely suboptimal, it is a
+        # transaction ESPN will refuse outright.
+        from fantasy_gm.execute.lineup_plan import locked_conflicts
+        conflicts = locked_conflicts(self.roster().players, list(ids))
+        if conflicts:
+            return "Illegal: " + " ".join(conflicts)
+
+        return "Legal: all starters fit valid slots with no duplicates."
 
     def _tool_get_opponent_defense(self, tool_input: dict) -> str:
         from fantasy_gm.agent.tools_ext.opponent_defense import tool_get_opponent_defense
