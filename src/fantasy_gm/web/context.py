@@ -36,6 +36,15 @@ _SLOT_RANK = {slot: i for i, slot in enumerate(SLOT_ORDER)}
 ALERT_STATUSES = {"out", "ir", "suspended"}
 
 
+def _team_abbr(nfl_team: str | None) -> str:
+    """ESPN stores an NFL team as a numeric proTeamId. "14" means nothing on a
+    page, so it is labelled through the existing map rather than shown raw."""
+    if not nfl_team:
+        return ""
+    from fantasy_gm.signals.collector import ESPN_PRO_TEAM_ABBR
+    return ESPN_PRO_TEAM_ABBR.get(str(nfl_team), str(nfl_team))
+
+
 def cache_stamp(adapter: Any, season: int, params: dict) -> float | None:
     """Epoch seconds when this ESPN read was cached, or None if never.
 
@@ -64,7 +73,7 @@ def _player_row(rp: RosterPlayer, projections: dict[str, float],
         "name": rp.player.name,
         "slot": rp.slot.value.upper(),
         "position": rp.player.position.value.upper(),
-        "nfl_team": rp.player.nfl_team or "",
+        "nfl_team": _team_abbr(rp.player.nfl_team),
         "opponent": opponents.get(pid, ""),
         "projection": projections.get(pid),
         "status": status,

@@ -129,3 +129,12 @@ def test_matchups_partial_renders_both_sides(client):
     text = client.get("/partials/matchups").text
     assert "Junedi" in text
     assert "Team Six" in text
+
+
+def test_nfl_team_is_an_abbreviation_not_an_espn_id(client, roster):
+    """ESPN stores the NFL team as a numeric proTeamId; "14" means nothing to a reader."""
+    text = client.get("/partials/roster").text
+    assert ">BUF<" in text
+    assert ">ATL<" in text
+    # the fixture uses real abbreviations, so no bare id should survive either
+    assert ">14<" not in text
