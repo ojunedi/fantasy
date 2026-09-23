@@ -194,7 +194,7 @@ def cmd_backtest(args: argparse.Namespace) -> None:
     from fantasy_gm.models import PlayerProjection
 
     league_id = os.environ.get("ESPN_LEAGUE_ID", "1660218687")
-    team_id = os.environ.get("ESPN_TEAM_ID", "8")
+    team_id = str(args.team_id) if args.team_id else os.environ.get("ESPN_TEAM_ID", "8")
 
     adapter = ESPNAdapter(league_id=league_id)
     settings = adapter.get_league_settings(season=args.season)
@@ -253,6 +253,7 @@ def main() -> None:
     p_bt = sub.add_parser("backtest", help="Replay historical weeks vs. baselines")
     p_bt.add_argument("--season", type=int, default=2025)
     p_bt.add_argument("--weeks", type=str, default="1-14")
+    p_bt.add_argument("--team-id", type=int, default=None, help="Override team ID (default: 8)")
     p_bt.set_defaults(func=cmd_backtest)
 
     args = parser.parse_args()
