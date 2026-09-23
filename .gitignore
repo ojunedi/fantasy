@@ -8,3 +8,4 @@ data/*.db
 dist/
 HANDOFF.md
 DECISIONS.md
+.claude/
