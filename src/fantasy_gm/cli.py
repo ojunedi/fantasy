@@ -104,7 +104,7 @@ def cmd_backtest(args: argparse.Namespace) -> None:
     from fantasy_gm.adapters.espn import ESPNAdapter
     from fantasy_gm.db.store import DecisionStore
     from fantasy_gm.eval.backtest import Backtester
-    from fantasy_gm.models import PlayerProjection, Position
+    from fantasy_gm.models import PlayerProjection
 
     league_id = os.environ.get("ESPN_LEAGUE_ID", "1660218687")
     team_id = os.environ.get("ESPN_TEAM_ID", "8")
@@ -113,14 +113,7 @@ def cmd_backtest(args: argparse.Namespace) -> None:
     settings = adapter.get_league_settings(season=args.season)
 
     def projection_fetcher(week: int, season: int) -> list[PlayerProjection]:
-        raw = adapter.get_projections(week, season)
-        out = []
-        for pid, pts in raw.items():
-            out.append(PlayerProjection(
-                player_id=pid, player_name=pid, projected_points=pts,
-                position=Position.WR, week=week, season=season,
-            ))
-        return out
+        return adapter.get_player_projections(week, season)
 
     def actual_score_fetcher(week: int, season: int) -> dict[str, float]:
         return adapter.get_actual_scores(week, season)

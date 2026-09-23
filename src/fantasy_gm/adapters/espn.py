@@ -409,6 +409,48 @@ class ESPNAdapter(FantasyPlatform):
                     break
         return projections
 
+    def get_player_projections(self, week: int, season: int) -> list:
+        """Like get_projections but returns list[PlayerProjection] with correct positions.
+
+        Makes the same kona_player_info call and captures defaultPositionId and
+        fullName alongside projected points. Used by the backtest harness.
+        """
+        import json as _json
+        from fantasy_gm.models import PlayerProjection
+        filter_header = {
+            "players": {
+                "limit": 1500,
+                "sortPercOwned": {"sortPriority": 1, "sortAsc": False},
+            }
+        }
+        data = self._fetch(
+            season,
+            params={"view": "kona_player_info", "scoringPeriodId": week},
+            headers={"X-Fantasy-Filter": _json.dumps(filter_header)},
+        )
+        results: list[PlayerProjection] = []
+        for entry in data.get("players", []):
+            p = entry.get("player", {})
+            pid = str(p.get("id", ""))
+            name = p.get("fullName", pid)
+            position = ESPN_POSITION_MAP.get(p.get("defaultPositionId", 0), Position.WR)
+            for stat in p.get("stats", []):
+                if (
+                    stat.get("statSourceId") == 1
+                    and stat.get("scoringPeriodId") == week
+                    and stat.get("seasonId") == season
+                ):
+                    results.append(PlayerProjection(
+                        player_id=pid,
+                        player_name=name,
+                        projected_points=round(float(stat.get("appliedTotal", 0.0)), 2),
+                        position=position,
+                        week=week,
+                        season=season,
+                    ))
+                    break
+        return results
+
     def get_actual_scores(self, week: int, season: int) -> dict[str, float]:
         """Actual fantasy points per player for a completed week (statSourceId == 0).
 
