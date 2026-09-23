@@ -351,7 +351,8 @@ class WeeklyScorecard(BaseModel):
     week: int
     season: int
     actual_score: float
-    optimal_score: float                          # hindsight optimal lineup
+    optimizer_score: float | None = None          # projection-based optimizer, scored against actuals
+    optimal_score: float                          # hindsight optimal (oracle — uses actual scores)
     agent_projected_score: float | None = None
     baseline_scores: dict[BaselineType, float]
     points_left_on_bench: float

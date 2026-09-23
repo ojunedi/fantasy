@@ -62,10 +62,21 @@ def compute_weekly_scorecard(
         for bt, lineup in baseline_lineups.items()
     }
 
+    # PLATFORM_RANK baseline is the projection-based optimizer — the number
+    # we actually care about: what would the optimizer have recommended pre-game?
+    platform_rank_lineup = baseline_lineups.get(BaselineType.PLATFORM_RANK)
+    optimizer_score: float | None = None
+    if platform_rank_lineup is not None:
+        optimizer_score = round(
+            sum(actual_scores.get(rp.player.platform_id, 0.0)
+                for rp in platform_rank_lineup if rp.is_starter), 2
+        )
+
     return WeeklyScorecard(
         week=week,
         season=season,
         actual_score=round(actual_score, 2),
+        optimizer_score=optimizer_score,
         optimal_score=round(optimal_score, 2),
         agent_projected_score=agent_projected_score,
         baseline_scores=baseline_scores,
@@ -76,19 +87,21 @@ def compute_weekly_scorecard(
 
 
 def format_scorecard(scorecard: WeeklyScorecard) -> str:
+    opt_str = f"{scorecard.optimizer_score:.2f}" if scorecard.optimizer_score is not None else "n/a"
     lines = [
         f"=== Week {scorecard.week} Scorecard ===",
-        f"Actual score:   {scorecard.actual_score:.2f}",
-        f"Optimal score:  {scorecard.optimal_score:.2f}",
-        f"Decision regret:{scorecard.decision_regret:.2f}",
-        f"Points on bench:{scorecard.points_left_on_bench:.2f}",
+        f"  Actual (you started):      {scorecard.actual_score:.2f}",
+        f"  Optimizer (pre-game proj): {opt_str}",
+        f"  Hindsight optimal (oracle):{scorecard.optimal_score:.2f}",
+        f"  Decision regret:           {scorecard.decision_regret:.2f}",
+        f"  Points left on bench:      {scorecard.points_left_on_bench:.2f}",
     ]
     if scorecard.agent_projected_score is not None:
-        lines.append(f"Agent projected:{scorecard.agent_projected_score:.2f}")
+        lines.append(f"  Agent projected:           {scorecard.agent_projected_score:.2f}")
     lines.append("")
-    lines.append("Baselines:")
+    lines.append("  Other baselines:")
     for bt, score in scorecard.baseline_scores.items():
         delta = scorecard.actual_score - score
         sign = "+" if delta >= 0 else ""
-        lines.append(f"  {bt.value:<20} {score:.2f}  ({sign}{delta:.2f} vs actual)")
+        lines.append(f"    {bt.value:<20} {score:.2f}  ({sign}{delta:.2f} vs actual)")
     return "\n".join(lines)
