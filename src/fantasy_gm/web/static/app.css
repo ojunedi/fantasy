@@ -250,7 +250,7 @@ tbody tr.divider td {
 }
 
 tr.is-mine td { background: var(--field); }
-tr.is-swap td { box-shadow: inset 3px 0 0 var(--chyron); }
+tr.is-swap td:first-child { box-shadow: inset 3px 0 0 var(--chyron); }
 
 /* An in-cell bar: points-for, read across the standings at a glance. */
 .bar {
