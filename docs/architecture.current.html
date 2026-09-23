@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fantasy GM Architecture</title>
+<style>
+:root{
+  --bg:#FAF9F7; --card:#FFFFFF; --line:#E4E1D8;
+  --fg:#2C2C2A; --fg2:#5F5E5A; --fg3:#888780;
+  --gray-f:#F1EFE8; --gray-s:#5F5E5A; --gray-t:#2C2C2A;
+  --purple-f:#EEEDFE; --purple-s:#534AB7; --purple-t:#26215C;
+  --teal-f:#E1F5EE; --teal-s:#0F6E56; --teal-t:#04342C;
+  --coral-f:#FAECE7; --coral-s:#993C1D; --coral-t:#4A1B0C;
+}
+@media (prefers-color-scheme:dark){
+:root:not([data-theme="light"]){
+  --bg:#1A1A18; --card:#232321; --line:#3A3A36;
+  --fg:#F1EFE8; --fg2:#B4B2A9; --fg3:#888780;
+  --gray-f:#444441; --gray-s:#B4B2A9; --gray-t:#F1EFE8;
+  --purple-f:#3C3489; --purple-s:#AFA9EC; --purple-t:#EEEDFE;
+  --teal-f:#085041; --teal-s:#5DCAA5; --teal-t:#E1F5EE;
+  --coral-f:#712B13; --coral-s:#F0997B; --coral-t:#FAECE7;
+}
+}
+:root[data-theme="dark"]{
+  --bg:#1A1A18; --card:#232321; --line:#3A3A36;
+  --fg:#F1EFE8; --fg2:#B4B2A9; --fg3:#888780;
+  --gray-f:#444441; --gray-s:#B4B2A9; --gray-t:#F1EFE8;
+  --purple-f:#3C3489; --purple-s:#AFA9EC; --purple-t:#EEEDFE;
+  --teal-f:#085041; --teal-s:#5DCAA5; --teal-t:#E1F5EE;
+  --coral-f:#712B13; --coral-s:#F0997B; --coral-t:#FAECE7;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:48px 16px 96px;background:var(--bg);color:var(--fg);
+  font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:16px;line-height:1.7;-webkit-font-smoothing:antialiased}
+.wrap{max-width:880px;margin:0 auto}
+h1{font-size:28px;font-weight:500;margin:0 0 8px;letter-spacing:-.01em}
+h2{font-size:20px;font-weight:500;margin:56px 0 4px;padding-top:24px;border-top:1px solid var(--line)}
+h3{font-size:16px;font-weight:500;margin:28px 0 8px}
+p{margin:8px 0 16px;color:var(--fg2)}
+.lede{font-size:17px;color:var(--fg2)}
+.meta{font-size:13px;color:var(--fg3);margin:0 0 8px}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;
+  background:var(--gray-f);color:var(--fg);padding:1px 5px;border-radius:4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin:16px 0}
+svg{display:block;width:100%;height:auto;overflow:visible}
+.t{font-size:13px}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--fg3);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+td:first-child{white-space:nowrap}
+ul{margin:8px 0 16px;padding-left:20px;color:var(--fg2)}
+li{margin:6px 0}
+.tag{display:inline-block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 8px;border-radius:999px;border:1px solid;margin-right:6px}
+.tag.det{background:var(--teal-f);color:var(--teal-t);border-color:var(--teal-s)}
+.tag.llm{background:var(--purple-f);color:var(--purple-t);border-color:var(--purple-s)}
+.tag.gate{background:var(--coral-f);color:var(--coral-t);border-color:var(--coral-s)}
+.note{border-left:3px solid var(--coral-s);padding:2px 0 2px 14px;margin:16px 0;color:var(--fg2)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--fg2);margin-top:12px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Fantasy GM — architecture</h1>
+<p class="meta">ESPN league 1660218687 · team 8 · 12-team PPR · generated 2026-09-23 against commit 66dd5b6</p>
+<p class="lede">An agentic general manager for ESPN fantasy football. It recommends weekly lineups, proposes trades with quantified EV, logs every decision and human override to SQLite, and executes approved lineup changes through ESPN's write API. Autonomy is Level 1: the human approves, then the agent acts.</p>
+
+<h2>The shape of the system</h2>
+<p>One rule explains most of the structure (D-017): <strong>a thin LLM over a thick deterministic layer</strong>. Every number — projections, optimal lineup, trade value, EV delta, schedule strength — is computed in <code>core/</code> by ordinary Python. The model is used for judgment and for turning English into structured signals, never for arithmetic.</p>
+
+<div class="card">
+<svg viewBox="0 0 840 430" role="img" aria-label="Layer diagram: surfaces, orchestration, agents, tools, deterministic core, data, persistence and execution">
+<g class="t" font-family="ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif">
+
+<rect x="0" y="0" width="840" height="56" rx="8" fill="var(--gray-f)" stroke="var(--gray-s)"/>
+<text x="16" y="24" fill="var(--gray-t)" font-size="12" letter-spacing="1">SURFACES</text>
+<text x="16" y="44" fill="var(--fg)">cli.py — run-week, propose-trades, backtest</text>
+<text x="420" y="44" fill="var(--fg)">web/ — /team · /league · /history · /trades</text>
+
+<path d="M420 56 L420 78" stroke="var(--fg3)" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="230" y="80" width="380" height="46" rx="8" fill="var(--purple-f)" stroke="var(--purple-s)"/>
+<text x="250" y="100" fill="var(--purple-t)" font-size="12" letter-spacing="1">ORCHESTRATION</text>
+<text x="250" y="118" fill="var(--purple-t)">GMSupervisor — sets risk posture, routes to a specialist</text>
+
+<path d="M420 126 L420 148" stroke="var(--fg3)" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="60" y="150" width="340" height="66" rx="8" fill="var(--purple-f)" stroke="var(--purple-s)"/>
+<text x="78" y="170" fill="var(--purple-t)" font-size="12" letter-spacing="1">LINEUP AGENT</text>
+<text x="78" y="190" fill="var(--purple-t)">LineupGraphAgent · 15 tools</text>
+<text x="78" y="208" fill="var(--purple-t)">terminal: propose_lineup | abstain</text>
+
+<rect x="440" y="150" width="340" height="66" rx="8" fill="var(--purple-f)" stroke="var(--purple-s)"/>
+<text x="458" y="170" fill="var(--purple-t)" font-size="12" letter-spacing="1">TRADE AGENT</text>
+<text x="458" y="190" fill="var(--purple-t)">TradeGraphAgent · 13 tools</text>
+<text x="458" y="208" fill="var(--purple-t)">terminal: propose_trades | abstain</text>
+
+<text x="420" y="240" fill="var(--fg3)" text-anchor="middle" font-size="12">both are thin subclasses of GraphAgent (agent/base.py)</text>
+
+<path d="M230 246 L230 268" stroke="var(--fg3)" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M610 246 L610 268" stroke="var(--fg3)" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="0" y="270" width="500" height="66" rx="8" fill="var(--teal-f)" stroke="var(--teal-s)"/>
+<text x="18" y="290" fill="var(--teal-t)" font-size="12" letter-spacing="1">DETERMINISTIC CORE</text>
+<text x="18" y="310" fill="var(--teal-t)">optimizer · scoring · trade_value · matchup</text>
+<text x="18" y="328" fill="var(--teal-t)">schedule · usage · projection_engine · waivers</text>
+
+<rect x="520" y="270" width="320" height="66" rx="8" fill="var(--teal-f)" stroke="var(--teal-s)"/>
+<text x="538" y="290" fill="var(--teal-t)" font-size="12" letter-spacing="1">DATA</text>
+<text x="538" y="310" fill="var(--teal-t)">adapters/ — ESPN, Sleeper</text>
+<text x="538" y="328" fill="var(--teal-t)">signals/ — nflverse, odds, weather</text>
+
+<rect x="0" y="356" width="400" height="60" rx="8" fill="var(--gray-f)" stroke="var(--gray-s)"/>
+<text x="18" y="376" fill="var(--gray-t)" font-size="12" letter-spacing="1">PERSISTENCE</text>
+<text x="18" y="398" fill="var(--fg)">db/store.py — decisions, scorecards (SQLite)</text>
+
+<rect x="420" y="356" width="420" height="60" rx="8" fill="var(--coral-f)" stroke="var(--coral-s)"/>
+<text x="438" y="376" fill="var(--coral-t)" font-size="12" letter-spacing="1">EXECUTION — BEHIND THE APPROVAL GATE</text>
+<text x="438" y="398" fill="var(--coral-t)">lineup_plan → espn_api · trade_plan (render only)</text>
+
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+<path d="M0 0 L10 5 L0 10 z" fill="var(--fg3)"/>
+</marker>
+</defs>
+</g>
+</svg>
+<div class="legend">
+<span><span class="sw" style="background:var(--purple-s)"></span>LLM in the loop</span>
+<span><span class="sw" style="background:var(--teal-s)"></span>deterministic</span>
+<span><span class="sw" style="background:var(--coral-s)"></span>can touch the outside world</span>
+</div>
+</div>
+
+<h2>The agent loop</h2>
+<p>Both agents are the same LangGraph <code>StateGraph</code>: two nodes, <code>agent</code> and <code>tools</code>, with conditional edges. The loop ends only when a <em>terminal tool</em> runs — detected by <code>ToolMessage</code> name in <code>_route_after_tools</code>. The model cannot end a run by simply deciding to stop talking.</p>
+
+<div class="card">
+<svg viewBox="0 0 760 250" role="img" aria-label="State graph: START to agent, agent to tools and back, terminal tool ends the run">
+<g class="t" font-family="ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif">
+<circle cx="50" cy="60" r="22" fill="var(--gray-f)" stroke="var(--gray-s)"/>
+<text x="50" y="65" text-anchor="middle" fill="var(--gray-t)" font-size="11">START</text>
+
+<path d="M72 60 L148 60" stroke="var(--fg3)" stroke-width="1.5" marker-end="url(#b)"/>
+
+<rect x="150" y="32" width="180" height="56" rx="8" fill="var(--purple-f)" stroke="var(--purple-s)"/>
+<text x="240" y="58" text-anchor="middle" fill="var(--purple-t)">agent</text>
+<text x="240" y="76" text-anchor="middle" fill="var(--purple-t)" font-size="12">one LLM call, tools bound</text>
+
+<path d="M330 50 L430 50" stroke="var(--fg3)" stroke-width="1.5" marker-end="url(#b)"/>
+<text x="380" y="42" text-anchor="middle" fill="var(--fg3)" font-size="12">tool_calls</text>
+
+<rect x="432" y="32" width="180" height="56" rx="8" fill="var(--teal-f)" stroke="var(--teal-s)"/>
+<text x="522" y="58" text-anchor="middle" fill="var(--teal-t)">tools</text>
+<text x="522" y="76" text-anchor="middle" fill="var(--teal-t)" font-size="12">ToolNode → ctx.dispatch</text>
+
+<path d="M432 78 C 380 120, 300 120, 250 92" stroke="var(--fg3)" stroke-width="1.5" fill="none" marker-end="url(#b)"/>
+<text x="340" y="122" text-anchor="middle" fill="var(--fg3)" font-size="12">not terminal — loop back</text>
+
+<path d="M612 60 L688 60" stroke="var(--coral-s)" stroke-width="1.5" marker-end="url(#c)"/>
+<circle cx="710" cy="60" r="22" fill="var(--coral-f)" stroke="var(--coral-s)"/>
+<text x="710" y="65" text-anchor="middle" fill="var(--coral-t)" font-size="11">END</text>
+<text x="650" y="42" text-anchor="middle" fill="var(--coral-s)" font-size="12">terminal</text>
+
+<rect x="150" y="160" width="462" height="70" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="170" y="182" fill="var(--fg)" font-size="13">Two budgets, and only one is meant to fire</text>
+<text x="170" y="202" fill="var(--fg2)" font-size="12">llm_budget — the real stop condition. Analysis calls, plus one held in reserve</text>
+<text x="170" y="220" fill="var(--fg2)" font-size="12">recursion_limit = 2·max(max_iter, llm_budget) + 6 — a safety net that sits above it</text>
+
+<defs>
+<marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+<path d="M0 0 L10 5 L0 10 z" fill="var(--fg3)"/></marker>
+<marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+<path d="M0 0 L10 5 L0 10 z" fill="var(--coral-s)"/></marker>
+</defs>
+</g>
+</svg>
+</div>
+
+<p>The budget split is load-bearing and was a real bug fix. The LLM budget is supposed to end the run by forcing a decision; the graph's recursion limit is a safety net that must sit <em>above</em> it. When it sat below, it fired first and discarded whole runs (<code>7149ee9</code>). When the analysis budget is spent, the reserved call goes out with only the terminal tools bound — so a run always ends in a recorded decision rather than silence.</p>
+
+<h3>Sub-agents</h3>
+<p>The only other place the model appears is two single-shot interpreters under <code>agent/subagents/</code>: <code>interpret_injuries</code> and <code>interpret_news</code>. They exist to turn unstructured English into typed signals. They call no tools and hold no loop.</p>
+
+<h2>Tool inventory</h2>
+<p>LangChain tools in <code>lc_tools.py</code> are thin wrappers over <code>ToolContext.dispatch</code>, so every call is logged into <code>DecisionRecord.inputs_snapshot</code> and replays identically in the CLI and the web trace.</p>
+
+<table>
+<tr><th>Lineup agent</th><th>Trade agent</th></tr>
+<tr>
+<td>
+get_roster<br>get_matchup<br>get_projections<br>get_signals<br>get_league_context<br>optimize_lineup<br>check_lineup_legality<br>get_opponent_defense<br>get_opponent_injuries<br>get_my_injury_summary<br>nfl_news<br>search_web<br><strong>propose_lineup</strong><br><strong>abstain</strong>
+</td>
+<td>
+get_my_roster<br>get_all_rosters<br>get_roster_needs<br>find_trade_targets<br>get_trade_value<br>evaluate_trade<br>get_matchup_analysis<br>get_schedule_strength<br>get_usage_trends<br>get_injury_report<br>get_player_news<br><strong>propose_trades</strong><br><strong>abstain</strong>
+</td>
+</tr>
+</table>
+
+<p>Nothing in either list writes. <code>abstain</code> is a first-class outcome, not a failure: of 35 logged trade decisions, 22 abstained. The trades page is designed around that — it shows what the agent was missing and what would change its mind.</p>
+
+<h2>Propose → approve → execute</h2>
+<p>The agent takes zero irreversible actions (D-011). Execution lives entirely below two human gates, and the plan is always recomputed server-side so the browser can never supply moves or a request payload.</p>
+
+<div class="card">
+<svg viewBox="0 0 800 210" role="img" aria-label="Flow from agent proposal through two approval gates to execution">
+<g class="t" font-family="ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif">
+
+<rect x="0" y="40" width="150" height="58" rx="8" fill="var(--purple-f)" stroke="var(--purple-s)"/>
+<text x="75" y="66" text-anchor="middle" fill="var(--purple-t)">agent proposes</text>
+<text x="75" y="84" text-anchor="middle" fill="var(--purple-t)" font-size="12">DecisionRecord</text>
+
+<path d="M152 69 L188 69" stroke="var(--fg3)" stroke-width="1.5" marker-end="url(#d)"/>
+
+<rect x="190" y="40" width="160" height="58" rx="8" fill="var(--coral-f)" stroke="var(--coral-s)"/>
+<text x="270" y="60" text-anchor="middle" fill="var(--coral-t)" font-size="11" letter-spacing="1">GATE 1</text>
+<text x="270" y="80" text-anchor="middle" fill="var(--coral-t)">approve / reject / modify</text>
+
+<path d="M352 69 L388 69" stroke="var(--fg3)" stroke-width="1.5" marker-end="url(#d)"/>
+
+<rect x="390" y="40" width="160" height="58" rx="8" fill="var(--coral-f)" stroke="var(--coral-s)"/>
+<text x="470" y="60" text-anchor="middle" fill="var(--coral-t)" font-size="11" letter-spacing="1">GATE 2</text>
+<text x="470" y="80" text-anchor="middle" fill="var(--coral-t)">type LIVE, or it is a dry run</text>
+
+<path d="M552 69 L588 69" stroke="var(--fg3)" stroke-width="1.5" marker-end="url(#d)"/>
+
+<rect x="590" y="26" width="210" height="40" rx="8" fill="var(--teal-f)" stroke="var(--teal-s)"/>
+<text x="695" y="51" text-anchor="middle" fill="var(--teal-t)" font-size="13">lineup → ESPNApiExecutor POST</text>
+
+<rect x="590" y="74" width="210" height="40" rx="8" fill="var(--gray-f)" stroke="var(--gray-s)"/>
+<text x="695" y="99" text-anchor="middle" fill="var(--fg)" font-size="13">trade → in-app steps, no send</text>
+
+<text x="270" y="124" text-anchor="middle" fill="var(--fg3)" font-size="12">reject and modify require a written reason</text>
+<text x="270" y="142" text-anchor="middle" fill="var(--fg3)" font-size="12">rejected proposals feed back into the next run's prompt</text>
+
+<rect x="0" y="162" width="800" height="44" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="18" y="180" fill="var(--fg2)" font-size="12">Locks flow through four layers — prompt context, optimizer, legality check, plan builder — after a live write</text>
+<text x="18" y="196" fill="var(--fg2)" font-size="12">was rejected with 409 TRAN_LINEUP_LOCKED. The deterministic planner is what makes a 1-player swap cascade legally through FLEX.</text>
+
+<defs>
+<marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+<path d="M0 0 L10 5 L0 10 z" fill="var(--fg3)"/></marker>
+</defs>
+</g>
+</svg>
+</div>
+
+<p>Trades never gain a send path, by design (D-019, D-021): ESPN requires the counterparty to accept, and trades are the highest-stakes, least reversible thing the GM proposes. The flow ends at rendered in-app steps. The approved package is recorded in <code>modified_recommendation</code> as <code>{"approved_package_index": n, ...}</code>, since one <code>DecisionRecord</code> holds a single human response but the agent proposes several packages.</p>
+
+<h2>The web layer presents and orchestrates; it computes nothing</h2>
+<p>FastAPI + Jinja2 + HTMX, server-rendered, bound to <code>127.0.0.1</code> with one worker. htmx and its SSE extension are vendored into <code>web/static/</code> — no Node, no build step, no hand-written JavaScript. <code>web/context.py</code> is the only place player-id → name joins happen; every number it hands a template came out of <code>core/</code>, <code>adapters/</code>, <code>signals/</code>, <code>execute/</code> or <code>db/</code>.</p>
+
+<ul>
+<li><strong>Single worker is load-bearing</strong>, not incidental — the run registry lives in process memory and the app holds ESPN write cookies behind an unauthenticated form.</li>
+<li><strong>Runs execute on a dedicated daemon thread</strong>, not <code>run_in_threadpool</code>: a run takes minutes, must outlive the request that started it, and would otherwise starve Starlette's shared threadpool.</li>
+<li><strong>The append-only event buffer is the source of truth</strong>, not the subscriber queue — so a reload or dropped connection resumes over <code>Last-Event-ID</code> with no gap and no duplicate.</li>
+<li><strong>Runs are deliberately not durable.</strong> The artifact that matters is the <code>DecisionRecord</code>, written to SQLite before the run reports itself done.</li>
+<li><code>POST /runs</code> dispatches on a <code>kind</code> field (<code>lineup</code> | <code>trade</code>) with single-flight keyed by <code>(kind, week, season)</code>, so a trade run and a lineup run can overlap.</li>
+</ul>
+
+<p>Where a number does not exist, the page shows nothing rather than inventing one. The hero stat is projected <em>margin</em>, because there is no win-probability function in this repo and writing one for a hero stat would be exactly the numeric hallucination D-017 exists to prevent.</p>
+
+<h2>Data sources</h2>
+<p>All keyless. nflverse data caches to <code>data/cache/nflverse/*.parquet</code> with a TTL; core tools consume normalized dicts, never Polars, so they stay pure and testable offline.</p>
+
+<table>
+<tr><th>Source</th><th>Provides</th></tr>
+<tr><td>ESPN adapter</td><td>roster, league settings, weekly projections (<code>statSourceId==1</code>), current week, write endpoint</td></tr>
+<tr><td>nflreadpy / nflverse</td><td>player stats, snaps, opportunity, schedules with Vegas lines and roof, injuries, ID map</td></tr>
+<tr><td>Sleeper</td><td>alternative platform adapter, secondary weekly projections</td></tr>
+<tr><td>FantasyCalc</td><td>market trade values (network call — templates drop value columns when unavailable)</td></tr>
+<tr><td>Open-Meteo</td><td>weather</td></tr>
+<tr><td>ESPN news / Tavily</td><td>research — <code>search_web</code> degrades gracefully with no key</td></tr>
+</table>
+
+<p>Every signal is a <code>Signal[T]</code> carrying <code>source</code> and <code>as_of</code> (D-008). Staleness is a first-class property, because a call made on three-day-old injury data is qualitatively different from one made on fresh data — and the agent needs to be able to hedge or abstain on that basis.</p>
+
+<h2>Rules the code holds to</h2>
+<ul>
+<li><span class="tag det">D-017</span>Numbers come from <code>core/</code>. The LLM gets judgment and language, never arithmetic.</li>
+<li><span class="tag gate">D-011</span>No tool the agent can call takes an irreversible action.</li>
+<li><span class="tag det">D-003</span>Scoring rules and roster structure are read from the API, never hardcoded.</li>
+<li><span class="tag det">D-005</span>The backtest enforces strict as-of-date isolation. Any post-hoc leakage invalidates the whole eval.</li>
+<li><span class="tag llm">D-016</span>New specialists supply only a prompt, tools, thread id and record builder. The loop is written once.</li>
+<li><span class="tag gate">D-009</span>The override log is the primary evaluation artifact — training data for the manager, not the model.</li>
+</ul>
+
+<h2>Known gaps</h2>
+<div class="note">
+<p><strong><code>cli.py:cmd_backtest</code> hardcodes <code>position=WR</code></strong> for every player in the projection fetcher, so backtest output is not currently a valid eval signal. This blocks items 3 and 4 of the roadmap.</p>
+<p><strong><code>PlaywrightExecutor</code> raises <code>NotImplementedError</code></strong> on the live path (<code>execute/browser.py:107</code>) — selectors are pinned against the live site during the season. The ESPN API path is the live route; both plan identically in dry run.</p>
+<p><strong>The trade agent has not been validated on a live week.</strong> Three sessions of robustness patches with no confirmation run.</p>
+<p><strong>No real linter.</strong> <code>make lint</code> is only <code>py_compile</code>; ruff is not installed.</p>
+</div>
+
+<h2>Module map</h2>
+<table>
+<tr><th>Path</th><th>Role</th></tr>
+<tr><td><code>core/</code></td><td>All analytics. Pure, no I/O, no LLM — optimizer (backtracking, not ILP), scoring, trade_value, matchup, schedule, usage, projection_engine, waivers, roster, game_env</td></tr>
+<tr><td><code>agent/base.py</code></td><td><code>ToolContext</code> (lazy caches, dispatch, call_log) and <code>GraphAgent</code> (the loop, terminal routing, SqliteSaver, LLM build)</td></tr>
+<tr><td><code>agent/trade/</code></td><td>Trade specialist — graph, tools, prompts, preferences</td></tr>
+<tr><td><code>agent/subagents/</code></td><td>The only other LLM units: injury and news interpretation</td></tr>
+<tr><td><code>adapters/</code></td><td><code>FantasyPlatform</code> implementations — ESPN (primary), Sleeper, plus cache</td></tr>
+<tr><td><code>signals/</code></td><td>Typed, timestamped signal collection over keyless sources</td></tr>
+<tr><td><code>execute/</code></td><td><code>lineup_plan</code> (deterministic planner), <code>espn_api</code>, <code>browser</code>, <code>fallback</code>, <code>trade_plan</code></td></tr>
+<tr><td><code>web/</code></td><td>Routes, run registry, SSE trace, context builder, templates</td></tr>
+<tr><td><code>db/store.py</code></td><td><code>decisions</code> and <code>scorecards</code> tables</td></tr>
+<tr><td><code>eval/</code></td><td>backtest, baselines, metrics — built in week 1, before any LLM work</td></tr>
+<tr><td><code>memo/</code></td><td>CLI approval gates and the trade preferences interview</td></tr>
+</table>
+
+<h2>Runtime</h2>
+<p>Python 3.11 via <code>uv</code> (not on the default PATH — <code>export PATH="$HOME/.local/bin:$PATH"</code>). LangGraph 1.x with LangChain as the orchestration layer only. The provider is pluggable — Anthropic, Google, Groq — defaulting to Anthropic <code>claude-haiku-4-5</code>, which reached the terminal tool reliably and validated lineup legality unprompted where the free-tier alternatives did not. Per-provider defaults exist for max_tokens and RPM because providers meter differently. Polars and nflreadpy for data, Pydantic v2, httpx, SQLite.</p>
+
+<p class="meta" style="margin-top:48px">Decision log: <code>DECISIONS.md</code>, D-001 through D-021. Append to it for any new design choice.</p>
+
+</div>
+</body>
+</html>
