@@ -134,8 +134,17 @@ def _render_trade_packages(record: DecisionRecord) -> None:
         print(f"\n  What would change this: {rec['what_would_change_this']}")
 
 
-def _present_and_approve_trade(record: DecisionRecord, store: DecisionStore) -> DecisionRecord:
-    """Approval flow for TRADE decisions. Approve → print the offer to send."""
+def _present_and_approve_trade(
+    record: DecisionRecord,
+    store: DecisionStore,
+    trade_executor=None,
+    team_id: str | None = None,
+) -> DecisionRecord:
+    """Approval flow for TRADE decisions.
+
+    With a trade_executor, an approved package can be sent through ESPN's write
+    API behind a LIVE gate; without one, the manual send steps are printed.
+    """
     store.save(record)
     print("\n" + _hr("="))
     print(f"  GM RECOMMENDATION — Week {record.week}, {record.season} — TRADE")
@@ -160,12 +169,18 @@ def _present_and_approve_trade(record: DecisionRecord, store: DecisionStore) -> 
         print("\n  ✓ Rejection logged.")
         return record
 
-    # Approve → render manual send steps (ESPN needs the counterparty to accept).
     record.human_response = HumanResponse.APPROVED
     store.record_human_response(record.id, HumanResponse.APPROVED)
     print("\n  ✓ Approved.")
+
+    trades = record.recommendation.get("trades", [])
+    if trade_executor and team_id and trades:
+        _send_approved_trade(record, trades, trade_executor, team_id, store)
+        return record
+
+    # No executor — render manual send steps.
     executor = TradeProposalExecutor()
-    for i, t in enumerate(record.recommendation.get("trades", []), 1):
+    for i, t in enumerate(trades, 1):
         plan = executor.plan(t)
         print("\n" + _hr())
         print(f"  SEND THIS OFFER [{i}] via {executor.name}:")
@@ -178,18 +193,72 @@ def _present_and_approve_trade(record: DecisionRecord, store: DecisionStore) -> 
     return record
 
 
+def _send_approved_trade(record, trades, trade_executor, team_id, store) -> None:
+    """Pick one package, plan it, and gate the live send behind typing LIVE.
+
+    Only ever sends ONE offer: firing several at once would commit the same
+    players to multiple counterparties simultaneously.
+    """
+    if len(trades) > 1:
+        print(f"\n  {len(trades)} packages proposed. Which one do you want to send?")
+        for i, t in enumerate(trades, 1):
+            send = ", ".join(map(str, t.get("send_names") or t.get("send_player_ids", [])))
+            recv = ", ".join(map(str, t.get("receive_names") or t.get("receive_player_ids", [])))
+            print(f"    [{i}] send {send or '(none)'} → get {recv or '(none)'} "
+                  f"(team {t.get('counterparty_team_id', '?')})")
+        raw = input(f"\n  Package number [1-{len(trades)}], or blank to cancel: ").strip()
+        if not raw.isdigit() or not (1 <= int(raw) <= len(trades)):
+            print("  Cancelled — nothing sent.")
+            return
+        index = int(raw) - 1
+    else:
+        index = 0
+
+    chosen = trades[index]
+    # One DecisionRecord holds a single human response, so which package was
+    # approved has to be recorded explicitly.
+    modified = {"approved_package_index": index}
+    record.modified_recommendation = modified
+    store.record_human_response(record.id, HumanResponse.APPROVED,
+                                modified_recommendation=modified)
+
+    plan = trade_executor.plan(chosen, team_id, record.week, record.season)
+    print("\n" + _hr())
+    print(f"  TRADE OFFER via {trade_executor.name}:")
+    for step in plan.human_steps:
+        print(f"    {step}")
+    for note in plan.notes:
+        print(f"    note: {note}")
+    print(_hr())
+
+    if plan.request_payload is None:
+        print("  Cannot send this package — see notes above.")
+        return
+
+    go_live = input("\n  Send this offer for REAL? Type 'LIVE' to send, anything else = dry run: ").strip()
+    result = trade_executor.execute(plan, season=record.season, live=(go_live == "LIVE"))
+
+    if result.success:
+        prefix = "✓ SENT" if not result.dry_run else "✓ DRY RUN"
+        print(f"\n  {prefix}: {result.message}")
+    else:
+        print(f"\n  ✗ Send failed: {result.error}")
+        print("  Fall back to sending the offer manually in the ESPN app.")
+
+
 def present_and_approve(
     record: DecisionRecord,
     store: DecisionStore,
     executor: Executor | None = None,
     team_id: str | None = None,
+    trade_executor=None,
 ) -> DecisionRecord:
     """Interactive approval flow. Saves the record and the human response.
 
     If an executor is provided, an approved/modified lineup is planned and
     executed (dry-run unless the user confirms LIVE)."""
     if record.decision_type == DecisionType.TRADE:
-        return _present_and_approve_trade(record, store)
+        return _present_and_approve_trade(record, store, trade_executor, team_id)
 
     store.save(record)
 

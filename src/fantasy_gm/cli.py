@@ -98,7 +98,11 @@ def cmd_propose_trades(args: argparse.Namespace) -> None:
     record = TradeGraphAgent(AgentConfig()).decide(ctx)
 
     store = DecisionStore()
-    present_and_approve(record, store, team_id=team_id)
+    trade_executor = None
+    if getattr(args, "send", False):
+        from fantasy_gm.execute.trade_api import ESPNTradeApiExecutor
+        trade_executor = ESPNTradeApiExecutor(adapter)
+    present_and_approve(record, store, team_id=team_id, trade_executor=trade_executor)
 
 
 def cmd_show_week(args: argparse.Namespace) -> None:
@@ -241,6 +245,9 @@ def main() -> None:
     p_trade.add_argument("--season", type=int, default=2026)
     p_trade.add_argument("--no-interview", action="store_true",
                          help="Skip the trade brief and run the standard scan.")
+    p_trade.add_argument("--send", action="store_true",
+                         help="Enable sending an approved offer via ESPN's API "
+                              "(still gated on typing LIVE).")
     p_trade.set_defaults(func=cmd_propose_trades)
 
     p_show = sub.add_parser("show-week", help="Print actual vs optimal lineup for a completed week")

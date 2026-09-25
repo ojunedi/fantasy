@@ -10,6 +10,7 @@ pretending it can write.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -19,6 +20,8 @@ class TradeSendPlan:
     receive_names: list[str]
     human_steps: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # Set only by the API executor; the manual renderer leaves it None.
+    request_payload: dict[str, Any] | None = None
 
 
 class TradeProposalExecutor:
