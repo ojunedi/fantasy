@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "project": "Fantasy GM",
+  "createdAt": "2026-09-30T15:15:25.613Z",
+  "updatedAt": "2026-09-30T15:50:29.028Z",
+  "schema": "frictionless-discovery",
+  "track": "discovery",
+  "stage": "event-storm",
+  "stages": {
+    "vision": {
+      "status": "complete",
+      "artifacts": [
+        "model/vision.md",
+        "model/strategy.md"
+      ],
+      "gate": {
+        "name": "vision-locked",
+        "passed": true,
+        "at": "2026-09-30T15:50:29.027Z"
+      },
+      "notes": ""
+    },
+    "event-storm": {
+      "status": "in-progress",
+      "artifacts": [],
+      "gate": {
+        "name": "storm-settled",
+        "passed": false
+      },
+      "notes": ""
+    },
+    "domain-design": {
+      "status": "todo",
+      "artifacts": [],
+      "gate": {
+        "name": "model-agreed",
+        "passed": false
+      },
+      "notes": ""
+    },
+    "target-arch": {
+      "status": "todo",
+      "artifacts": [],
+      "gate": {
+        "name": "architecture-approved",
+        "passed": false
+      },
+      "notes": ""
+    },
+    "feature-slices": {
+      "status": "todo",
+      "artifacts": [],
+      "gate": {
+        "name": "slices-ready",
+        "passed": false
+      },
+      "notes": ""
+    }
+  },
+  "activeSlice": null,
+  "slices": []
+}

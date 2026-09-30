@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "intake",
+      "kind": "files",
+      "description": "Raw material the team dropped in — notes, transcripts, exports, screenshots.",
+      "path": ".frictionless/intake",
+      "provides": [
+        "*"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "repo-docs",
+      "kind": "files",
+      "description": "Documentation already in this repository.",
+      "path": "docs",
+      "provides": [
+        "prior-art",
+        "existing-systems",
+        "process-documentation"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "example-mcp",
+      "kind": "mcp",
+      "description": "Template for an MCP-backed source. Fill in and enable.",
+      "server": "<mcp-server-name>",
+      "tools": [
+        "<search-tool>",
+        "<fetch-tool>"
+      ],
+      "provides": [
+        "business-context",
+        "process-documentation",
+        "sme-interviews"
+      ],
+      "queryHint": "What to search for, and where. E.g. \"space BILLING, process docs\".",
+      "enabled": false
+    }
+  ]
+}

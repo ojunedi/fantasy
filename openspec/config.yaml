@@ -1,0 +1,106 @@
+# frictionless: superseded by the managed block below — a duplicate
+# "schema:" key makes OpenSpec discard this entire file.
+# schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
+
+# >>> frictionless (managed) — regenerate with /frictionless:knowledge sync
+schema: frictionless-slice
+rules:
+  intent:
+    - "Acceptance criteria are the point of this document. Number them AC-n and cite the source of each: outcome, invariant, NFR, contract, unhappy path, or hotspot."
+    - "Every invariant of every aggregate this slice touches, that this slice could violate, needs an acceptance criterion."
+    - "Reject criteria containing: appropriate, properly, gracefully, reasonable, as needed, handle, support, robust, fast, user-friendly. Each defers a decision to whoever implements it."
+    - "Answer interface impact explicitly yes or no. A yes requires the ux artifact."
+    - "State the acceptance signal in terms of the world, not the test suite."
+    - "Before finishing, run a Quick Challenge on the outcome and scope: one assumption you are least sure of, the strongest counter-argument, and one question nobody has asked. Surface it to the user; do not resolve it silently."
+    - "When challenged, use the editorial voice (`contrarian-editorial`): this document is read by product and business, and a finding they cannot parse is a finding nobody acts on."
+    - "This document is read by product and business. Lead every statement with the thing itself and put ids in parentheses at the end — \"the seven-year retention rule collides with this slice's 30-day purge (CON-11)\", never \"CON-11 conflicts with S-123\". Nobody holds ids in their head, and a sentence they must look up before they can disagree with gets a nod instead of an answer."
+    - "Keep this under 150 lines. Everything except the acceptance criteria stays short — if the prose is growing you are writing the spec early. If the criteria alone exceed the cap, the slice is too big; say so."
+    - "Correct in place. Never append an amendment, a \"Update <date>:\" block, or a superseded line with a note under it — a read that stops early misses it, which makes the artifact wrong in a way that looks right. Git holds the history."
+  specs:
+    - "Every noun must resolve in the glossary from the project context. A noun that does not is a finding — raise it rather than coining a word."
+    - "Nothing may contradict an invariant from the domain model."
+    - "Copy NFR budgets as numbers. Never paraphrase a budget into prose."
+    - "Cover the failure paths from the event storm's unhappy-path table, and state what does NOT happen in each — the absent event, the unchanged state."
+    - "Every acceptance criterion in intent.md must be traceable to at least one scenario. Name which AC each requirement serves."
+    - "Every scenario carries a globally unique id: declare `<!-- trace-prefix: XXX -->` once per capability and number scenarios under it — `#### Scenario: XXX-01 — <name>`. A delta inherits the prefix from the live spec rather than redeclaring it."
+    - "Scenario ids are append-only. Never renumber to close a gap and never reuse a removed scenario's id — a retired id that comes back makes an old test claim a new behaviour."
+    - "Write each THEN/AND clause as its own bullet. Every clause must be asserted by a test, and a clause bundled into a sentence with another is a clause that gets half-tested."
+    - "Scenarios use exactly four hashtags. Three fails silently."
+    - "When challenged, use the technical voice (`contrarian`): this artifact is judged on structural precision."
+    - "Keep each spec file under 150 lines. One capability per file — a spec that outgrows the cap is covering more than one capability, which it should not have been."
+    - "Correct in place. Never append an amendment, a \"Update <date>:\" block, or a superseded line with a note under it — a read that stops early misses it, which makes the artifact wrong in a way that looks right. Git holds the history."
+  ux:
+    - "Read the registered design system before making any visual decision. If none is registered, say so and ask — do not invent a parallel design language."
+    - "Read the prototype with `scripts/prototype.mjs for-slice <slice-id>` before describing a screen. Where it reports screens, a human approved them by clicking through — start from those, do not redesign them."
+    - "Every state the prototype lists is covered here or explicitly retired with a reason. A state dropped silently is one the stakeholder still believes was agreed."
+    - "Name the prototype screen id beside each screen, or mark it `not prototyped`. \"Outside the prototype's scope\" and \"no prototype exists\" are different answers and only one of them means nobody reviewed it."
+    - "Where the prototype and the specs disagree, the specs win and the prototype is wrong. Say so and flag it for correction — never follow one silently."
+    - "Specify every state: empty, loading, partial, error, success, permission-denied. The states nobody specifies are the states that ship broken."
+    - "Map every element to a component from the registered library. Flag anything unmatched as NEW COMPONENT — that is a design decision, not an implementation detail."
+    - "Write the real strings. Placeholder copy becomes shipped copy."
+    - "Error copy must correspond to the error codes in the spec."
+    - "Every state named here needs a scenario in the specs, or a stated reason it does not."
+    - "When challenged, use the editorial voice (`contrarian-editorial`): copy, states, and interaction are reviewed by designers and stakeholders, not only engineers."
+    - "This document is read by product and business. Lead every statement with the thing itself and put ids in parentheses at the end — \"the seven-year retention rule collides with this slice's 30-day purge (CON-11)\", never \"CON-11 conflicts with S-123\". Nobody holds ids in their head, and a sentence they must look up before they can disagree with gets a nod instead of an answer."
+    - "Keep this under 150 lines. Over that, split by screen: ux/index.md listing the screens, ux/<screen>.md for each one's states, content, and interaction."
+    - "Correct in place. Never append an amendment, a \"Update <date>:\" block, or a superseded line with a note under it — a read that stops early misses it, which makes the artifact wrong in a way that looks right. Git holds the history."
+  design:
+    - "Cover both halves: how to build AND how to test. A build approach without a test approach produces tests written against the implementation."
+    - "For an interface slice with a prototype, the UI approach names the prototype screen behind each element — and in `target-stack` mode the prototype file to start from. Rebuilding a reviewed screen from scratch discards the review."
+    - "In `standalone` mode the prototype is a visual and flow reference, never a source of code. Say which mode applied; an unstated mode gets read as whichever is convenient."
+    - "For a `type: journey-e2e` slice covered by a prototype, state how the suite asserts the shipped flow against the registered one — which flow, which screens in which order, which states, and what it deliberately does not reach. Divergence is HIGH: resolve it or accept it with a reason and correct the prototype."
+    - "Every scenario in specs/**/*.md gets a row in the scenario coverage table, keyed by its id, naming the level, the test file and the test name. A scenario with no row is a defect. The scenario is the unit of coverage, not the AC — one AC carries several scenarios, and a table keyed on the AC hides all but one of them."
+    - "Test names carry the scenario id, so traceability is a grep rather than a review exercise."
+    - "One test per row. A second case is a second row. No coverage claim outside a row — there is no notes column, because a promise in free text is one no script can read."
+    - "Status is `required` or `waived`, and states intent rather than state. Whether the test exists is derived by scripts/trace.mjs, never typed by hand. A `waived` row needs a matching row in 'Not covered by automated tests' with a reason."
+    - "Every acceptance criterion from intent.md appears in at least one coverage row's AC column."
+    - "Every applicable NFR gets a measurement method and a place it runs. An unmeasured NFR is not a passed NFR."
+    - "State what will NOT be covered by automated tests. Omitting this section does not make the gap go away."
+    - "Record rejected alternatives for each decision, not just the choice."
+    - "When challenged, use the technical voice (`contrarian`): this artifact is judged on structural precision."
+    - "Keep this under 150 lines. Reference intent and specs rather than restating them; if a section would only repeat them, point at it instead. Over the cap, move the per-criterion coverage table to design/coverage.md."
+    - "Correct in place. Never append an amendment, a \"Update <date>:\" block, or a superseded line with a note under it — a read that stops early misses it, which makes the artifact wrong in a way that looks right. Git holds the history."
+  tasks:
+    - "Write the test task before the implementation task it covers."
+    - "Every scenario appears by its id in at least one task, and each test task names the test it will write."
+    - "Each test task says to annotate the test clause by clause — a `// <SCENARIO-ID> THEN <clause>` comment directly above the assertion proving each THEN/AND clause. Written with the test, this surfaces the clause nobody has an assertion for while adding one is still cheap."
+    - "The Verification group runs scripts/trace.mjs check --phase delivery rather than self-attesting coverage. A checkbox that says 'every criterion maps to a passing test' was tickable while a scenario had no test at all."
+    - "Every contract change gets its own task. Silent contract drift is the most expensive defect this pipeline can produce."
+    - "For interface slices, cover each state named in ux.md and every element flagged NEW COMPONENT."
+    - "Each UI task names the prototype screen it implements where one exists. A task that names no screen is a screen that gets redesigned during implementation by whoever is typing."
+    - "A `type: journey-e2e` slice with a prototype gets one task per registered flow asserting the shipped transitions match it, plus a task running `scripts/prototype.mjs check`."
+    - "When challenged, use the technical voice (`contrarian`): this artifact is judged on structural precision."
+    - "Keep this under 150 lines. Over that, the slice is too big — say so rather than splitting the checklist, because a slice nobody can hold is a slice nobody can finish."
+    - "Correct in place. Never append an amendment, a \"Update <date>:\" block, or a superseded line with a note under it — a read that stops early misses it, which makes the artifact wrong in a way that looks right. Git holds the history."
+# <<< frictionless

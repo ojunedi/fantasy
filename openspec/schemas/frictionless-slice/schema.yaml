@@ -1,0 +1,417 @@
+name: frictionless-slice
+version: 1
+description: >-
+  Frictionless SDLC delivery — one OpenSpec change per feature slice. Intent
+  carries the acceptance criteria; specs carry the behaviour contract; ux covers
+  interface slices; design covers how to build AND how to test; tasks is the
+  checklist. Discovery's output arrives through the context digest in
+  openspec/config.yaml, so a slice can be picked up cold.
+
+artifacts:
+  - id: intent
+    generates: intent.md
+    description: Why this slice exists, for whom, and the acceptance criteria it must meet
+    template: intent.md
+    instruction: |
+      Establish WHY this slice exists and WHAT "done" means. This replaces the
+      usual proposal — there is no separate proposal document, so everything the
+      team needs to agree on before specifying lives here.
+
+      Read first, and do not re-derive any of it:
+      - The project context block (injected above) — this is discovery's output:
+        bounded contexts, context map, aggregates and invariants, glossary terms,
+        NFR budgets, data ownership, contract locations.
+      - `.frictionless/slices/<slice-id>.json` — this slice's carried context.
+      - `docs/slices/manifest.md` — where this slice sits in the sequence.
+
+      Sections:
+      - **Outcome**: one sentence, user-observable. A specific actor can do or
+        see something they could not before.
+      - **Who**: the actor named in the event storm. Not "the user".
+      - **Why now**: what this unblocks, or what risk it retires. If this is the
+        walking skeleton, say so.
+      - **Acceptance criteria**: numbered `AC-n`, each independently testable.
+        THIS IS THE CORE OF THE DOCUMENT. Derive them from two sources and say
+        which each came from:
+          1. the outcome — what the actor must be able to do, including the
+             failure paths from the event storm's unhappy-path table;
+          2. discovery — the invariants of every aggregate this slice touches,
+             the NFR budgets that apply, and the contracts it must honour.
+        An invariant from the domain model that this slice can violate MUST have
+        an acceptance criterion. That is the main thing this step catches.
+      - **Acceptance signal**: how we would know it worked in the world, not in
+        the test suite. Distinct from the criteria.
+      - **Out of scope**: binding. Adjacent things this slice deliberately
+        does not do.
+      - **Carried context**: contexts, aggregates, contracts, NFRs, dependencies —
+        copied from the slice record so this file stands alone.
+      - **Interface impact**: does this slice touch a user interface? Answer
+        explicitly yes or no. A yes requires the `ux` artifact.
+      - **Open questions**: each with an owner. Carry in any hotspot this slice
+        will hit.
+
+      Words that mean a criterion is not finished: appropriate, properly,
+      gracefully, reasonable, as needed, handle, support, robust, fast,
+      user-friendly. Each defers a decision to whoever implements it.
+
+      Test for a criterion: could two competent engineers read it and write
+      different tests? Then rewrite it.
+
+      Keep everything except the acceptance criteria short. If the prose is
+      growing, you are writing the spec early.
+    requires: []
+
+  - id: specs
+    generates: "specs/**/*.md"
+    description: The behaviour contract as delta specs against the project's capabilities
+    template: spec.md
+    instruction: |
+      Define WHAT the system must do — observable behaviour, not implementation.
+
+      One spec file per capability this slice adds or changes, at
+      `specs/<capability-path>/spec.md`. Capability paths follow the project's
+      existing organisation under `openspec/specs/`; new segments are kebab-case.
+
+      Inherit, never re-decide:
+      - Names come from the glossary in the project context. Every noun in the
+        spec must resolve there. A noun that does not is a finding — raise it
+        rather than coining a word.
+      - Invariants come from the domain model. A spec may not contradict one.
+      - Budgets come from the NFRs. Copy the numbers; do not paraphrase them
+        into "should be fast".
+      - Shapes come from the contracts named in the slice record.
+
+      Delta operations (`##` headers): ADDED / MODIFIED / REMOVED / RENAMED
+      Requirements. MODIFIED must include the ENTIRE updated requirement block,
+      copied from the existing spec and then edited — partial content loses
+      detail at archive time. REMOVED needs **Reason** and **Migration**.
+
+      Format:
+      - `### Requirement: <name>` then a SHALL/MUST statement
+      - `#### Scenario: <PREFIX>-NN — <name>` with GIVEN/WHEN/THEN bullets
+      - Scenarios MUST use exactly four hashtags. Three fails silently.
+      - Every requirement has at least one scenario.
+      - New capabilities open with `## Purpose` — one or two sentences.
+
+      **Every scenario carries an id.** Declare the prefix once per capability,
+      on the file that creates it:
+
+          <!-- trace-prefix: INVSUB -->
+
+      then number scenarios under it — `INVSUB-01`, `INVSUB-02`. A delta
+      against an existing capability INHERITS the prefix from the live spec and
+      does not redeclare it; copy existing ids unchanged, and allocate new ones
+      after the highest already in use across the live spec and every change in
+      flight.
+
+      The id is what a test gets named after, and it is the only anchor that
+      works: it is unique repo-wide, it survives archiving because OpenSpec
+      copies the scenario header into `openspec/specs/**` verbatim, and it
+      survives rewording because it is not derived from the text. An AC number
+      does none of those — `AC-2` means something different in every slice.
+
+      Ids are append-only. Never renumber, never reuse a removed scenario's id.
+      `scripts/trace.mjs backfill --change <id>` assigns ids to a spec with
+      none, and `check` fails a prefix that two capabilities share.
+
+      Cover the failure paths, not just the happy path. For each, state what
+      does NOT happen: the event not published, the state unchanged. Those
+      assertions are what catch partial failures.
+
+      Write each THEN/AND clause as a separate bullet. Every one of them has to
+      be asserted by a test later, and a clause bundled into a sentence with
+      another is a clause that gets half-tested.
+
+      Every acceptance criterion in intent.md must be traceable to at least one
+      scenario here. Say which AC each requirement serves.
+    requires:
+      - intent
+
+  - id: ux
+    generates: "ux/*.md"
+    description: Interface behaviour — screens, states, flows, and component mapping
+    template: ux.md
+    instruction: |
+      Create this ONLY if intent.md answered yes to interface impact. For a
+      backend-only slice, skip it — do not produce an empty document.
+
+      Read the design system context first via
+      `scripts/design-system.mjs context`. If no design system has been
+      registered, say so and ask whether to register one
+      (`/frictionless:build:design-intake`) before inventing visual decisions.
+      Working without it is allowed; inventing a parallel design language is not.
+
+      Then read the prototype:
+
+        scripts/prototype.mjs for-slice <slice-id>
+
+      If it reports screens, they were approved by a human who clicked through
+      them. Start from those screens, states, flows and copy — do not redesign
+      what was signed off. Every state it lists must appear in **Screens and
+      states** or be explicitly retired with a reason. A state dropped silently
+      is one the stakeholder still believes was agreed.
+
+      Where the prototype and the specs disagree, the specs win and the
+      prototype is wrong — say so here and flag it for correction rather than
+      quietly following one of them.
+
+      If it reports no screens for this slice, say whether that is because the
+      slice was outside the prototype's scope or because no prototype exists.
+      Those are different, and only the second means nobody has reviewed these
+      screens at all.
+
+      Sections:
+      - **Screens and states**: every screen this slice touches, and every state
+        each can be in — empty, loading, partial, error, success, permission-
+        denied, offline if relevant. The states nobody specifies are the states
+        that ship broken. Name the prototype screen id each one corresponds to,
+        or mark it `not prototyped` — which is allowed, and is exactly the thing
+        a reviewer needs to see.
+      - **Flow**: a Mermaid diagram of the user's path, including the exits.
+        Where the prototype registered a flow covering this slice, the diagram
+        must match its steps or state which step changed and why.
+      - **Component mapping**: each UI element mapped to a component from the
+        registered library. Anything with no match is a NEW COMPONENT — flag it
+        explicitly, because it is a design decision, not an implementation
+        detail.
+      - **Content**: the actual strings. Labels, empty states, and error
+        messages, matching the error codes in the spec. Placeholder copy becomes
+        shipped copy.
+      - **Interaction**: validation timing, optimistic vs pending, focus
+        movement, what is keyboard-reachable.
+      - **Accessibility**: roles and labels, focus order, contrast, what a
+        screen reader announces on state change.
+      - **Responsive**: the breakpoints that change layout, and how.
+      - **Open design questions**: with owners.
+
+      Every state you name must have a corresponding scenario in the specs, or a
+      reason it does not need one.
+    requires:
+      - intent
+
+  - id: design
+    generates: design.md
+    description: How to build it and how to test it
+    template: design.md
+    instruction: |
+      Explain HOW — both halves, because a build approach without a test
+      approach produces tests written against the implementation.
+
+      **Build approach**
+      - Where the code goes, and which existing patterns it follows. Read
+        neighbouring code first; match it.
+      - **UI approach — interface slices only.** If intent.md answered yes to
+        interface impact, read the design system and the prototype BEFORE
+        writing this section:
+
+          scripts/design-system.mjs context
+          scripts/prototype.mjs for-slice <slice-id>
+
+        If the prototype ran in `target-stack` mode, name the prototype file
+        each screen starts from — that code is the starting point and
+        rebuilding it from scratch discards the reviewed layout. If it ran in
+        `standalone` mode, its screens are a visual and flow reference only:
+        carry the layout, states, flow and copy forward; do not copy its code,
+        which has no tests and was never meant to ship.
+
+        Then read ux.md's component mapping and carry every row forward into
+        buildable form: the library component, the import path, and the variant
+        or props to use. ux.md decided WHICH component; this decides WHERE it
+        comes from and HOW it is used. An element in ux.md with no row here is
+        an element the implementer will hand-roll, and a hand-rolled component
+        is how a registered design system gets quietly bypassed.
+
+        Also record: the style rules that apply (spacing scale, semantic colour
+        tokens, typography) with their source, and every NEW COMPONENT from
+        ux.md with where it lives and which existing pattern it follows.
+
+        If no design system is registered, say so explicitly rather than
+        inventing visual decisions. Omit the whole section for a backend slice.
+      - Which aggregate enforces which invariant, and where the transaction
+        boundary sits.
+      - Contract changes, and whether each is breaking.
+      - Data and migrations, including the rollback.
+      - Key decisions with the alternatives you rejected and why.
+      - Risks and trade-offs, each as [Risk] → Mitigation.
+
+      **Test approach**
+      - A **scenario coverage** table with one row per scenario in
+        `specs/**/*.md`, keyed by scenario id, giving the level it is tested at
+        (unit / integration / contract / e2e / performance / manual), the test
+        FILE and the test NAME. A scenario with no row is the defect this
+        section exists to prevent.
+
+        The scenario is the unit of coverage, not the AC. One AC routinely
+        carries several scenarios, and a table keyed on the AC is how N-1 of
+        them ship untested while it still looks complete.
+
+        One test per row — a second case is a second row. There is no notes
+        column: a coverage claim in free text is a promise no script can read.
+
+        `Status` is `required` or `waived`, nothing else. It states intent, not
+        state; whether the test actually exists is derived by `trace.mjs`, not
+        typed by hand. A `waived` row needs a matching row in **Not covered by
+        automated tests** giving the reason.
+
+        Every AC from intent.md must appear in at least one row's AC column.
+      - Test names must carry the scenario id: `INVSUB-02: submitting an empty
+        invoice is rejected`. The id prefix is the contract; the prose after it
+        is free. Keep `AC-SIGNAL` for the e2e acceptance-signal test.
+      - **Prototype validation — `type: journey-e2e` slices with a prototype.**
+        Read `scripts/prototype.mjs context`. If a prototype covers this
+        journey, the e2e suite asserts the shipped flow against the approved
+        one, and this section says how: which registered flow it drives, which
+        screens it visits in which order, which states it exercises, and which
+        registered screens it deliberately does not reach. Name a stable
+        selector strategy — a suite keyed on layout re-fails on every visual
+        change and gets disabled within two slices.
+
+        Divergence is a HIGH finding: resolve it, or accept it with a reason
+        and correct the prototype. It is not CRITICAL, because a prototype
+        legitimately goes stale and the specs — not the prototype — are the
+        behaviour contract. It is not LOW either: somebody approved that flow.
+
+        Omit the section when no prototype covers the journey, and say that is
+        why.
+      - Verify the table rather than trusting it:
+
+          node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" check --phase planning
+      - Fixtures and test data, especially anything that must be realistic.
+      - How each applicable NFR budget gets measured, and where. An unmeasured
+        NFR is not a passed NFR.
+      - What will NOT be covered by automated tests, and why. State it here or
+        it will be discovered in production.
+
+      Reference intent for the criteria and specs for the requirements. If a
+      section would only restate them, point at them instead.
+    requires:
+      - intent
+      - specs
+
+  - id: tasks
+    generates: tasks.md
+    description: Implementation checklist, ordered by dependency
+    template: tasks.md
+    instruction: |
+      Break the work down. The apply phase parses checkbox format, so follow it
+      exactly — tasks not written as `- [ ] X.Y description` are not tracked.
+
+      Before writing tasks, check design.md and intent.md for open questions. If
+      any would change what gets built, resolve them with the user now. Do not
+      bake an unstated assumption into the checklist.
+
+      Rules:
+      - Group under `## N. Heading`; each task is `- [ ] N.M description`
+      - Write the test task before the implementation task it covers. Tests come
+        from the scenarios, not from the code.
+      - Every scenario appears in at least one task, by its scenario id. Name
+        the test the task will write: `Write INVSUB-02: submitting an empty
+        invoice is rejected (unit)`.
+      - Each test task says to annotate the test clause by clause — one
+        `// <SCENARIO-ID> THEN <clause>` comment directly above the assertion
+        that proves each THEN/AND clause of the scenario. Written as the test is
+        written, this is what surfaces the clause nobody has an assertion for
+        while it is still cheap to add one. A comment is a claim to be checked
+        at review, never evidence on its own.
+      - Derive component tasks from the **Components** table in design.md — one
+        task per CREATE component, one per non-trivial MODIFY. A component that
+        appears in the diff without a task is a code review finding.
+      - For interface slices, add a **UI** group covering every state named in
+        ux.md. Each UI task names the actual library component and import path
+        from design.md's UI approach — "Build the line item table with DataTable
+        from @acme/ui", not "Build the line item table". A task that does not
+        name the component is a task that will be implemented from scratch.
+        Where a prototype screen backs the task, name it too, and in
+        `target-stack` mode name the prototype file to start from — an
+        unreferenced screen is a screen that gets redesigned during
+        implementation by whoever is typing.
+      - Add an **E2E** group with one task for the acceptance-signal e2e test
+        from intent.md, and one task to run it against a real environment. For
+        a `type: journey-e2e` slice whose journey is covered by the prototype,
+        add one task per registered flow asserting that the shipped screens and
+        transitions match it, and a task to run
+        `scripts/prototype.mjs check` and resolve every CRITICAL.
+      - Add a **Verification** group: run the full suite, run
+        `scripts/trace.mjs check --phase delivery` and resolve every CRITICAL,
+        then confirm each test would fail if its scenario were violated. The
+        script proves a test exists for each scenario and clause; only a human
+        can judge whether the assertion is any good.
+      - Add a **Code review** group as the final group: `Run
+        /frictionless:slice-review and resolve all CRITICAL findings`. This gates
+        archiving — nothing ships past an unresolved CRITICAL.
+      - Order by dependency: what must exist first?
+      - Each task is completable in one sitting and verifiable.
+      - Include the contract update as its own task whenever a contract changes.
+        Silent contract drift is the most expensive defect this pipeline can
+        produce.
+    requires:
+      - design
+
+apply:
+  requires: [tasks]
+  tracks: tasks.md
+  instruction: |
+    Work through pending tasks, marking each complete as you go.
+
+    **Interface slices: read the design system and the prototype before
+    writing any UI code.**
+
+      scripts/design-system.mjs context
+      scripts/prototype.mjs for-slice <slice-id>
+
+    Where a prototype screen backs what you are building, build to its layout,
+    states, flow and copy — that is what a human approved by clicking through
+    it. In `target-stack` mode, start from the prototype file design.md named
+    rather than writing the screen again. In `standalone` mode, take the design
+    and write the implementation fresh; the prototype's code has no tests and
+    was never meant to ship.
+
+    Build to the **spec's** behaviour, always. Where the prototype contradicts
+    the spec, the spec wins — fix the prototype and say what changed rather
+    than letting the two drift apart silently, which is how the prototype
+    stops being worth validating against.
+
+    Build against the registered component library and style guide — the
+    components and import paths named in design.md's UI approach, the semantic
+    tokens named in its style rules. Do not hand-roll a component the library
+    already provides, and do not hardcode a value a token covers. If the
+    library genuinely has no fit, that is a NEW COMPONENT and design.md already
+    named where it lives and which pattern it follows; build it that way rather
+    than improvising. A design system bypassed in one slice becomes a second
+    dialect by the third.
+
+    **Name every test after its scenario id, and annotate it clause by clause.**
+    `it('INVSUB-02: submitting an empty invoice is rejected')`, with a
+    `// INVSUB-02 THEN <clause>` comment directly above the assertion proving
+    each THEN/AND clause of the scenario. Write the comments as you write the
+    test — their whole purpose is to make you notice the clause you have no
+    assertion for, while adding one is still cheap.
+
+    Never write a clause comment above an assertion that does not actually
+    prove that clause. A false claim there is worse than no comment: it reads
+    as coverage and survives review.
+
+    The spec is the source of truth, and the spec can be wrong. When you find it
+    is wrong — and you will — stop, fix the spec, then continue. Implementing
+    something better than the spec silently means the next person reads a lie.
+
+    The out-of-scope list in intent.md is binding. Adjacent good ideas become
+    candidate slices, not scope creep.
+
+    Report real test output. "Should work" is not a result.
+
+    When you learn something that contradicts discovery — a missing domain
+    event, a wrong boundary, an unachievable NFR — record it with
+    `/frictionless:feedback`. Judge the blast radius honestly: if a boundary is
+    wrong, other slices rest on the same assumption. Say so and name them rather
+    than softening it to protect momentum.
+
+    Pause on blockers rather than guessing.
+
+    **When all tasks are complete:**
+    1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" check --phase delivery`
+       and resolve every CRITICAL. This is mechanical and takes seconds; do it
+       before spending a review on findings a grep would have caught.
+    2. Run `/frictionless:slice-review` — do not proceed until all CRITICAL
+       findings are resolved and all HIGH findings are explicitly accepted.
+    3. Run `/frictionless:build:ship` to archive, commit, and mark shipped.
