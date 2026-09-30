@@ -2,7 +2,7 @@
   "version": 2,
   "project": "Fantasy GM",
   "createdAt": "2026-09-30T15:15:25.613Z",
-  "updatedAt": "2026-09-30T16:15:17.318Z",
+  "updatedAt": "2026-09-30T16:50:55.253Z",
   "schema": "frictionless-discovery",
   "track": "discovery",
   "stage": "event-storm",
@@ -25,7 +25,9 @@
       "artifacts": [
         "model/journeys.md",
         "model/functions.md",
-        "model/event-maps/index.md"
+        "model/event-maps/index.md",
+        "model/contexts.md",
+        "model/hotspots.md"
       ],
       "gate": {
         "name": "storm-settled",

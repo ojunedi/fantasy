@@ -27,6 +27,7 @@ substep: scope
 | id | name | capability | description | source |
 |----|------|------------|-------------|--------|
 | R-01 | Manager (Omer) | CAP-04 | Single human actor — reviews every recommendation, approves or overrides, triggers execution, and reads end-of-season review | kb |
+| R-02 | Fantasy GM Agent | CAP-02 | The system under construction — gathers signals, runs the deterministic core, generates recommendations, and logs decisions. Takes no irreversible action without R-01's approval | kb |
 
 ## Systems
 
@@ -36,7 +37,7 @@ substep: scope
 | SYS-NFLVERSE | nflreadpy (nflverse) | third-party | NFL stats, snaps, usage, schedules, Vegas lines, injuries, ID bridge — keyless and cached locally | kb |
 | SYS-FANTASYCALC | FantasyCalc API | third-party | Rest-of-season player trade values — network call, may be unavailable | kb |
 | SYS-ESPN-NEWS | ESPN News API | third-party | Player news, injury updates, practice reports — keyless | kb |
-| SYS-FANTASYPROS | FantasyPros | third-party | Consensus projections — current source is ESPN; FantasyPros is the planned upgrade, architecture keeps projection source pluggable | planned |
+| SYS-FANTASYPROS | FantasyPros | third-party | Consensus projections — current source is ESPN; FantasyPros is the planned upgrade, architecture keeps projection source pluggable | assumed |
 | SYS-TAVILY | Tavily | third-party | Web search for targeted injury and news research — activates when API key is set, degrades gracefully without one | kb |
 
 ## Journeys
