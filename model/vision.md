@@ -18,7 +18,7 @@ ESPN ranks players by a single consensus number with no injury adjustment, no wa
 | id | objective | why_it_matters |
 |----|-----------|----------------|
 | O-01 | Every lineup decision is made on a projection-backed recommendation, not the platform default | The platform ranking is a single number with no transparency; a projection-backed pick is auditable and improvable |
-| O-02 | Every waiver claim is evaluated against roster need and projected added value | Waiver decisions are currently unassisted — the highest-value weekly action has no tooling |
+| O-02 | Every waiver claim clears two bars: better than what it displaces, and worth a roster spot on its own merits | Waiver decisions are currently unassisted. Judging only against my own roster would recommend bad players whenever a position is thin |
 | O-03 | Trade proposals carry a quantified rest-of-season EV case before the manager engages a counterparty | Entering a trade negotiation without a number makes it harder to hold a position or walk away |
 | O-04 | The agent demonstrably outperforms a naive (start-platform-rank-one) baseline on lineup decisions | Without a number, "the agent is better" is a belief, not a result |
 | O-05 | Every decision and override is logged so the manager can see at season's end where to trust the agent | The override log is what turns a season's worth of decisions into a way to improve next year |
