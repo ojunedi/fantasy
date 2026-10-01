@@ -2,10 +2,10 @@
   "version": 2,
   "project": "Fantasy GM",
   "createdAt": "2026-09-30T15:15:25.613Z",
-  "updatedAt": "2026-09-30T16:50:55.253Z",
+  "updatedAt": "2026-10-01T16:23:39.031Z",
   "schema": "frictionless-discovery",
   "track": "discovery",
-  "stage": "event-storm",
+  "stage": "domain-design",
   "stages": {
     "vision": {
       "status": "complete",
@@ -21,7 +21,7 @@
       "notes": ""
     },
     "event-storm": {
-      "status": "in-progress",
+      "status": "complete",
       "artifacts": [
         "model/journeys.md",
         "model/functions.md",
@@ -31,12 +31,13 @@
       ],
       "gate": {
         "name": "storm-settled",
-        "passed": false
+        "passed": true,
+        "at": "2026-10-01T16:23:39.027Z"
       },
       "notes": ""
     },
     "domain-design": {
-      "status": "todo",
+      "status": "in-progress",
       "artifacts": [],
       "gate": {
         "name": "model-agreed",
