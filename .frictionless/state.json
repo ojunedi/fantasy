@@ -2,10 +2,10 @@
   "version": 2,
   "project": "Fantasy GM",
   "createdAt": "2026-09-30T15:15:25.613Z",
-  "updatedAt": "2026-10-01T16:38:36.436Z",
+  "updatedAt": "2026-10-01T18:39:00.498Z",
   "schema": "frictionless-discovery",
   "track": "discovery",
-  "stage": "domain-design",
+  "stage": "target-arch",
   "stages": {
     "vision": {
       "status": "complete",
@@ -37,20 +37,20 @@
       "notes": ""
     },
     "domain-design": {
-      "status": "in-progress",
+      "status": "complete",
       "artifacts": [
-        "model/domain-model.md",
         "model/ubiquitous-language.md",
         "model/domain-model/index.md"
       ],
       "gate": {
         "name": "model-agreed",
-        "passed": false
+        "passed": true,
+        "at": "2026-10-01T18:39:00.493Z"
       },
       "notes": ""
     },
     "target-arch": {
-      "status": "todo",
+      "status": "in-progress",
       "artifacts": [],
       "gate": {
         "name": "architecture-approved",
