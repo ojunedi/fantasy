@@ -49,4 +49,4 @@ identifies any systematic override patterns, and calibrates their trust in the a
 
 | id | when | then | crosses_context |
 |----|------|------|-----------------|
-| P-301 | E-308 | Present scorecard to manager (BC-audit → BC-recommendation) | yes |
+| P-301 | E-308 | Present scorecard to manager (within BC-ledger) | |

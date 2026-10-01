@@ -41,15 +41,15 @@ the agent generates the in-app steps to send the offer in the ESPN app.
 |----|------------|--------|
 | ASM-010 | FantasyCalc API is reachable when the agent runs | assumed |
 | ASM-011 | The manager's brief is specific enough to narrow the search | assumed |
-| ASM-012 | The counterparty must accept in the ESPN app — there is no automated send path | kb |
+| ASM-012 | The offer can be sent by the system through ESPN's undocumented write endpoint, but only the counterparty can accept it. Sending is automatable; the outcome is not | kb |
 
 ## Commands
 
 | id | command | event | actor | aggregate | context |
 |----|---------|-------|-------|-----------|---------|
 | C-101 | FetchTradeSignals | E-102 | R-02 | AGG-signal-bundle | BC-signal |
-| C-102 | GenerateTradePackages | E-105 | R-02 | AGG-trade-rec | BC-analysis |
-| C-103 | ApproveTradePackage | E-110 | R-01 | AGG-decision-record | BC-trade |
+| C-102 | GenerateTradePackages | E-105 | R-02 | AGG-trade-analysis | BC-analysis |
+| C-103 | ApproveTradePackage | E-110 | R-01 | AGG-trade-offer | BC-trade |
 
 ## Policies
 

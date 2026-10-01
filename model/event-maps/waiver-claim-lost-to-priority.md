@@ -38,7 +38,7 @@ way to notice.
 
 | id | command | event | actor | aggregate | context |
 |----|---------|-------|-------|-----------|---------|
-| C-205 | SurfaceFallbackCandidate | E-232 | R-02 | AGG-waiver-rec | BC-waiver |
+| C-205 | SurfaceFallbackCandidate | E-232 | R-02 | AGG-waiver-analysis | BC-waiver |
 
 ## Policies
 

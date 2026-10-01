@@ -39,7 +39,7 @@ short of it.
 
 | id | command | event | actor | aggregate | context |
 |----|---------|-------|-------|-----------|---------|
-| C-104 | InvalidateStaleRecommendations | E-125 | R-02 | AGG-lineup-rec | BC-lineup |
+| C-104 | InvalidateStaleRecommendations | E-125 | R-02 | AGG-lineup-decision | BC-lineup |
 
 ## Policies
 

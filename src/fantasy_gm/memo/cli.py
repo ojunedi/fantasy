@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from fantasy_gm.db.store import DecisionStore
 from fantasy_gm.execute.base import Executor
-from fantasy_gm.execute.trade_plan import TradeProposalExecutor
+from fantasy_gm.execute.trade_plan import TradeOfferExecutor
 from fantasy_gm.models import DecisionRecord, DecisionType, HumanResponse
 
 
@@ -179,7 +179,7 @@ def _present_and_approve_trade(
         return record
 
     # No executor — render manual send steps.
-    executor = TradeProposalExecutor()
+    executor = TradeOfferExecutor()
     for i, t in enumerate(trades, 1):
         plan = executor.plan(t)
         print("\n" + _hr())
@@ -238,12 +238,15 @@ def _send_approved_trade(record, trades, trade_executor, team_id, store) -> None
     go_live = input("\n  Send this offer for REAL? Type 'LIVE' to send, anything else = dry run: ").strip()
     result = trade_executor.execute(plan, season=record.season, live=(go_live == "LIVE"))
 
-    if result.success:
-        prefix = "✓ SENT" if not result.dry_run else "✓ DRY RUN"
-        print(f"\n  {prefix}: {result.message}")
-    else:
+    if not result.success:
         print(f"\n  ✗ Send failed: {result.error}")
         print("  Fall back to sending the offer manually in the ESPN app.")
+    elif result.dry_run:
+        print(f"\n  ✓ DRY RUN: {result.message}")
+    elif result.confirmed:
+        print(f"\n  ✓ SENT: {result.message}")
+    else:
+        print(f"\n  ⚠ UNCONFIRMED: {result.message}")
 
 
 def present_and_approve(

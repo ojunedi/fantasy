@@ -47,14 +47,14 @@ approves; the lineup is submitted to ESPN via the write API.
 | id | command | event | actor | aggregate | context |
 |----|---------|-------|-------|-----------|---------|
 | C-001 | FetchWeeklySignals | E-002 | R-02 | AGG-signal-bundle | BC-signal |
-| C-002 | OptimizeLineup | E-008 | R-02 | AGG-lineup-rec | BC-analysis |
-| C-003 | ApproveLineup | E-011 | R-01 | AGG-decision-record | BC-lineup |
-| C-004 | SubmitLineupToESPN | E-013 | SYS-ESPN | AGG-decision-record | BC-lineup |
+| C-002 | OptimizeLineup | E-008 | R-02 | AGG-lineup-analysis | BC-analysis |
+| C-003 | ApproveLineup | E-011 | R-01 | AGG-lineup-decision | BC-lineup |
+| C-004 | SubmitLineupToESPN | E-013 | SYS-ESPN | AGG-lineup-decision | BC-lineup |
 
 ## Policies
 
 | id | when | then | crosses_context |
 |----|------|------|-----------------|
 | P-001 | E-007 | Run the lineup optimizer with the blended scores (BC-signal → BC-analysis) | yes |
-| P-002 | E-008 | Generate the lineup brief with per-player reasoning (BC-analysis → BC-recommendation) | yes |
-| P-003 | E-011 | Submit lineup to ESPN AND log the decision record (BC-approval → BC-audit) | yes |
+| P-002 | E-008 | Generate the lineup brief with per-player reasoning (BC-analysis → BC-lineup) | yes |
+| P-003 | E-011 | Submit lineup to ESPN AND log the decision record (BC-lineup → BC-ledger) | yes |

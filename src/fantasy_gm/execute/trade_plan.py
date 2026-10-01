@@ -1,11 +1,14 @@
 """
-Trade "execution" — propose-only.
+Trade offer sending — the manual path.
 
-An ESPN trade cannot be executed unilaterally: the counterparty has to accept
-the offer in-app. So there is no live write path here. This executor turns an
-approved trade package into the exact steps to send the offer in the ESPN app,
-mirroring the dry-run-by-default contract of the lineup `Executor` without
-pretending it can write.
+A trade cannot be *executed* unilaterally: the counterparty has to accept. But
+sending the offer can be automated, and `trade_api.ESPNTradeApiExecutor` does
+exactly that. This module is the fallback for when that endpoint is unavailable
+or unauthenticated: it turns an approved package into the exact steps to send
+the offer by hand.
+
+Both executors produce a `TradeSendPlan`; only the API one fills
+`request_payload`.
 """
 from __future__ import annotations
 
@@ -24,7 +27,7 @@ class TradeSendPlan:
     request_payload: dict[str, Any] | None = None
 
 
-class TradeProposalExecutor:
+class TradeOfferExecutor:
     """Renders the manual steps to send a trade offer. Never writes."""
 
     name = "espn-trade-manual"

@@ -40,7 +40,8 @@ ESPN ranks players by a single consensus number with no injury adjustment, no wa
 | SC-01 | Lineup recommendations | in | Core capability — working |
 | SC-02 | Waiver wire evaluation | in | Highest-priority gap |
 | SC-03 | Trade proposals with EV | in | Working |
-| SC-04 | ESPN write API execution | in | Working — dry-run default, requires LIVE to send |
+| SC-04 | ESPN write API execution — lineup | in | Working — dry-run default, requires LIVE, confirmed by reading the roster back |
+| SC-14 | ESPN write API execution — trade send | in | Working as of 2026-09-25, behind dry-run and LIVE. The only irreversible write in the product, and it does not yet confirm by read-back |
 | SC-05 | FantasyPros consensus projections | in | ESPN projections are the current source; FantasyPros is the planned upgrade — architecture must keep the projection source pluggable |
 | SC-06 | Web dashboard | in | Working — lineup and trades pages |
 | SC-07 | Draft tools | out | Different problem, different season phase — no dependency on weekly tooling |

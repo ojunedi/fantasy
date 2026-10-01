@@ -38,10 +38,10 @@ say no.
 
 | id | command | event | actor | aggregate | context |
 |----|---------|-------|-------|-----------|---------|
-| C-005 | OverrideLineup | E-020 | R-01 | AGG-decision-record | BC-lineup |
+| C-005 | OverrideLineup | E-020 | R-01 | AGG-lineup-decision | BC-lineup |
 
 ## Policies
 
 | id | when | then | crosses_context |
 |----|------|------|-----------------|
-| P-004 | E-021 | Log the override alongside the original recommendation, then submit the manager's lineup (BC-approval → BC-audit) | yes |
+| P-004 | E-021 | Log the override alongside the original recommendation, then submit the manager's lineup (BC-lineup → BC-ledger) | yes |

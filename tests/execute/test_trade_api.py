@@ -84,3 +84,130 @@ def test_execute_unsendable_plan_fails(monkeypatch):
     result = ex.execute(plan, season=2026, live=True)
     assert not result.success
     assert "No sendable payload" in result.error
+
+
+# --- read-back confirmation (D-022) ----------------------------------------
+# ESPN's write endpoint can return 200 without creating anything, so a send is
+# only confirmed by finding the offer on a subsequent read.
+
+class _ReadBackAdapter:
+    league_id = "999"
+
+    def __init__(self, pending):
+        self._pending = pending
+        self.read_count = 0
+
+    def get_pending_trade_proposals(self, season):
+        self.read_count += 1
+        return self._pending
+
+
+def _sendable(ex):
+    return ex.plan(
+        {"counterparty_team_id": "3", "send_player_ids": ["111"],
+         "receive_player_ids": ["222"], "send_names": ["A"], "receive_names": ["B"]},
+        team_id="8", week=4, season=2026,
+    )
+
+
+def _ok_post(monkeypatch):
+    class _Resp:
+        status_code = 200
+        text = ""
+    monkeypatch.setattr("fantasy_gm.execute.trade_api.httpx.post",
+                        lambda *a, **k: _Resp())
+
+
+def test_live_send_confirmed_when_offer_is_found(monkeypatch):
+    ex = _executor(monkeypatch)
+    plan = _sendable(ex)
+    ex.adapter = _ReadBackAdapter([{
+        "type": "TRADE_PROPOSAL", "teamId": 8,
+        "items": [{"playerId": 111}, {"playerId": 222}],
+    }])
+    _ok_post(monkeypatch)
+
+    result = ex.execute(plan, season=2026, live=True)
+    assert result.success and result.confirmed is True
+    assert ex.adapter.read_count == 1
+
+
+def test_live_send_unconfirmed_when_offer_is_absent(monkeypatch):
+    """A 200 with nothing to show for it. Success stays True — the POST did
+    happen — but confirmed is False, because re-sending would risk a duplicate."""
+    ex = _executor(monkeypatch)
+    plan = _sendable(ex)
+    ex.adapter = _ReadBackAdapter([])
+    _ok_post(monkeypatch)
+
+    result = ex.execute(plan, season=2026, live=True)
+    assert result.success is True
+    assert result.confirmed is False
+    assert "NOT" in result.message and "do not re-send" in result.message.lower()
+
+
+def test_confirmation_ignores_another_teams_offer(monkeypatch):
+    """Same players, different proposer — not our offer."""
+    ex = _executor(monkeypatch)
+    plan = _sendable(ex)
+    ex.adapter = _ReadBackAdapter([{
+        "type": "TRADE_PROPOSAL", "teamId": 5,
+        "items": [{"playerId": 111}, {"playerId": 222}],
+    }])
+    _ok_post(monkeypatch)
+    assert ex.execute(plan, season=2026, live=True).confirmed is False
+
+
+def test_confirmation_requires_the_exact_player_set(monkeypatch):
+    """A pending offer involving an overlapping but different set of players is
+    a different offer, not ours."""
+    ex = _executor(monkeypatch)
+    plan = _sendable(ex)
+    ex.adapter = _ReadBackAdapter([{
+        "type": "TRADE_PROPOSAL", "teamId": 8,
+        "items": [{"playerId": 111}, {"playerId": 222}, {"playerId": 999}],
+    }])
+    _ok_post(monkeypatch)
+    assert ex.execute(plan, season=2026, live=True).confirmed is False
+
+
+def test_read_back_failure_reports_unconfirmed_not_success(monkeypatch):
+    """If the confirming read itself throws, the answer is 'unconfirmed'. It is
+    never 'assume it worked'."""
+    ex = _executor(monkeypatch)
+    plan = _sendable(ex)
+
+    class _Exploding:
+        league_id = "999"
+        def get_pending_trade_proposals(self, season):
+            raise RuntimeError("ESPN read failed")
+    ex.adapter = _Exploding()
+    _ok_post(monkeypatch)
+
+    result = ex.execute(plan, season=2026, live=True)
+    assert result.success is True and result.confirmed is False
+
+
+def test_dry_run_leaves_confirmed_unset(monkeypatch):
+    ex = _executor(monkeypatch)
+    plan = _sendable(ex)
+    ex.adapter = _ReadBackAdapter([])
+    result = ex.execute(plan, season=2026, live=False)
+    assert result.dry_run and result.confirmed is None
+    assert ex.adapter.read_count == 0
+
+
+def test_failed_post_does_not_read_back(monkeypatch):
+    ex = _executor(monkeypatch)
+    plan = _sendable(ex)
+    ex.adapter = _ReadBackAdapter([])
+
+    class _Resp:
+        status_code = 401
+        text = "not authorized"
+    monkeypatch.setattr("fantasy_gm.execute.trade_api.httpx.post",
+                        lambda *a, **k: _Resp())
+
+    result = ex.execute(plan, season=2026, live=True)
+    assert not result.success and result.confirmed is None
+    assert ex.adapter.read_count == 0

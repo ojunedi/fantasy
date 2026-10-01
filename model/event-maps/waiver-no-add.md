@@ -34,10 +34,10 @@ produces an add is a waiver wire being scored against too low a bar.
 
 | id | command | event | actor | aggregate | context |
 |----|---------|-------|-------|-----------|---------|
-| C-204 | RecommendHold | E-221 | R-02 | AGG-waiver-rec | BC-analysis |
+| C-204 | RecommendHold | E-221 | R-02 | AGG-waiver-analysis | BC-analysis |
 
 ## Policies
 
 | id | when | then | crosses_context |
 |----|------|------|-----------------|
-| P-203 | E-223 | Log the no-claim decision with the near-miss candidates (BC-approval → BC-audit) | yes |
+| P-203 | E-223 | Log the no-claim decision with the near-miss candidates (BC-waiver → BC-ledger) | yes |

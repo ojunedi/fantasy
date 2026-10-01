@@ -40,11 +40,11 @@ the approval happened, and the lineup still did not change.
 
 | id | command | event | actor | aggregate | context |
 |----|---------|-------|-------|-----------|---------|
-| C-007 | RetryViaBrowser | E-042 | R-02 | AGG-decision-record | BC-lineup |
+| C-007 | RetryViaBrowser | E-042 | R-02 | AGG-lineup-decision | BC-lineup |
 
 ## Policies
 
 | id | when | then | crosses_context |
 |----|------|------|-----------------|
-| P-007 | E-040 | Log the failure detail AND attempt the browser fallback (BC-approval → BC-audit) | yes |
-| P-008 | E-044 | Tell the manager they must act manually, with the exact moves (BC-approval → BC-recommendation) | yes |
+| P-007 | E-040 | Log the failure detail AND attempt the browser fallback (BC-lineup → BC-ledger) | yes |
+| P-008 | E-044 | Tell the manager they must act manually, with the exact moves (within BC-lineup) | |

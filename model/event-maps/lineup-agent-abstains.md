@@ -38,11 +38,11 @@ whose confidence carries no information.
 
 | id | command | event | actor | aggregate | context |
 |----|---------|-------|-------|-----------|---------|
-| C-006 | Abstain | E-031 | R-02 | AGG-lineup-rec | BC-analysis |
+| C-006 | Abstain | E-031 | R-02 | AGG-lineup-analysis | BC-analysis |
 
 ## Policies
 
 | id | when | then | crosses_context |
 |----|------|------|-----------------|
 | P-005 | E-030 | Abstain rather than optimise over stale inputs (BC-signal → BC-analysis) | yes |
-| P-006 | E-033 | Log the abstention with the staleness evidence (BC-recommendation → BC-audit) | yes |
+| P-006 | E-033 | Log the abstention with the staleness evidence (BC-lineup → BC-ledger) | yes |

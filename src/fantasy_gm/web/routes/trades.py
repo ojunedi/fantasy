@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse
 
 from fantasy_gm.adapters.espn import ESPNAdapter
 from fantasy_gm.db.store import DecisionStore
-from fantasy_gm.execute.trade_plan import TradeProposalExecutor
+from fantasy_gm.execute.trade_plan import TradeOfferExecutor
 from fantasy_gm.models import DecisionType, HumanResponse
 from fantasy_gm.web import context, reads
 from fantasy_gm.web.deps import ReadCache, get_adapter, get_reads, get_settings, get_store
@@ -155,7 +155,7 @@ def approve_package(decision_id: str, index: int, request: Request,
                                  "trades": [package]},
     )
 
-    plan = TradeProposalExecutor().plan(package)
+    plan = TradeOfferExecutor().plan(package)
     return request.app.state.templates.TemplateResponse(
         request, "partials/trade_send_steps.html",
         {"plan": context.trade_send_plan_view(plan),

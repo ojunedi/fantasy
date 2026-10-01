@@ -546,3 +546,22 @@ class ESPNAdapter(FantasyPlatform):
                 timestamp=ts,
             ))
         return txns
+
+    def get_pending_trade_proposals(self, season: int) -> list[dict]:
+        """Raw pending TRADE_PROPOSAL transactions, cache bypassed.
+
+        Deliberately returns ESPN's own shape rather than a `Transaction`: this
+        exists to confirm a write landed, and normalising first would discard the
+        per-item from/to team ids that are the only thing distinguishing one
+        proposal from another. `Transaction` models add/drop and has nowhere to
+        put them.
+
+        Cache bypass is the point. Confirming a write against a cached read can
+        only ever echo back what we believed before sending.
+        """
+        data = self._fetch(season, params={"view": "mTransactions2"}, bypass_cache=True)
+        return [
+            t for t in data.get("transactions", [])
+            if t.get("type") == "TRADE_PROPOSAL"
+            and str(t.get("status", "")).upper() in ("PENDING", "")
+        ]

@@ -18,6 +18,7 @@ Disagreements, unknowns, and risks surfaced while storming.
 | H-05 | Is the replacement baseline computed against the full roster or only the startable slots? | unknown | J-03 | R-01 | E-206, drop-cost arithmetic | Full roster including bench; startable slots only; startable slots plus the top bench player per position |
 | H-06 | Is anything watching the clock? A recommendation can go unread until kickoff and nothing currently notices | risk | J-01 | R-01 | E-050, and the equivalent waiver deadline | Nothing watches (current state); a reminder at a fixed time before kickoff; escalate only when the standing lineup differs from the recommendation |
 | H-07 | Can the system tell a declined offer from one still sitting unanswered? | unknown | J-02 | R-01 | E-122, trade outcome logging | ESPN exposes offer state on read; infer from the offer disappearing; never know, and log only acceptances |
+| H-09 | The trade send reports success on any non-error response and never reads the league back to confirm the offer exists | risk | J-02 | R-01 | I-23, trade send confirmation | Read the transaction list back after sending and only then report sent; poll until the offer appears; accept the response at face value (current behaviour) |
 | H-08 | What stops a generated brief from asserting something the optimizer did not compute? | risk | J-01 | R-01 | every brief-generation event (E-009, E-108, E-209) | Template the prose so numbers can only be interpolated, never written; post-generation check that every number in the brief appears in the analysis output; accept the risk and rely on review |
 
 <!--
@@ -29,6 +30,11 @@ H-02 and H-05 are arithmetic decisions that look like implementation detail and
 are not: one decides when the agent refuses to answer, the other decides what
 counts as an upgrade. Both belong in domain design rather than in whoever writes
 the scorer.
+
+H-09 is the live one. The irreversible write is the one that does not verify
+itself, while the reversible write does — the asymmetry runs exactly the wrong
+way, and it is in production now. An invariant exists for it (I-23); the code
+does not satisfy it yet.
 
 H-08 is the failure the whole thin-LLM design exists to prevent, and it had no
 hotspot until the storm was challenged. Every number in the product is computed

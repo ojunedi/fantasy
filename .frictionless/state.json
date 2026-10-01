@@ -2,7 +2,7 @@
   "version": 2,
   "project": "Fantasy GM",
   "createdAt": "2026-09-30T15:15:25.613Z",
-  "updatedAt": "2026-10-01T16:23:39.031Z",
+  "updatedAt": "2026-10-01T16:38:36.436Z",
   "schema": "frictionless-discovery",
   "track": "discovery",
   "stage": "domain-design",
@@ -38,7 +38,11 @@
     },
     "domain-design": {
       "status": "in-progress",
-      "artifacts": [],
+      "artifacts": [
+        "model/domain-model.md",
+        "model/ubiquitous-language.md",
+        "model/domain-model/index.md"
+      ],
       "gate": {
         "name": "model-agreed",
         "passed": false

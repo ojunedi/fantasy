@@ -31,6 +31,16 @@ class TradeExecutionResult:
     plan: TradeSendPlan
     message: str = ""
     error: str | None = None
+    confirmed: bool | None = None
+    """Whether the offer was found in the league's pending proposals afterwards.
+
+    Three states, and the middle one is why this is not a bool on `success`:
+      True   — the POST returned and the offer is really there.
+      False  — the POST returned but the read-back could not find it. Do not
+               re-send on this; a duplicate offer is worse than an unconfirmed
+               one. Check the app.
+      None   — no live send was attempted (dry run, or it failed outright).
+    """
 
 
 def build_espn_trade_transaction(
@@ -151,13 +161,52 @@ class ESPNTradeApiExecutor:
                     False, dry_run=False, executor=self.name, plan=plan,
                     error=f"ESPN API {resp.status_code}: {body}",
                 )
-            return TradeExecutionResult(
-                True, dry_run=False, executor=self.name, plan=plan,
-                message=f"Offer sent to team {plan.counterparty_team_id} — "
-                        f"pending their acceptance.",
-            )
         except Exception as e:
             return TradeExecutionResult(
                 False, dry_run=False, executor=self.name, plan=plan,
                 error=f"ESPN trade write failed: {e}",
             )
+
+        confirmed = self._confirm_sent(plan, season)
+        if confirmed:
+            return TradeExecutionResult(
+                True, dry_run=False, executor=self.name, plan=plan, confirmed=True,
+                message=f"Offer sent to team {plan.counterparty_team_id} and confirmed "
+                        f"in the league's pending proposals — awaiting their decision.",
+            )
+        return TradeExecutionResult(
+            True, dry_run=False, executor=self.name, plan=plan, confirmed=False,
+            message=f"Offer POSTed to team {plan.counterparty_team_id}, but it could NOT "
+                    f"be found in the league's pending proposals on read-back. ESPN "
+                    f"accepted the request without obviously acting on it. Check the "
+                    f"app before doing anything else — do not re-send, or you risk two "
+                    f"identical offers.",
+        )
+
+    def _confirm_sent(self, plan: TradeSendPlan, season: int) -> bool:
+        """Look for this offer in the league's pending proposals.
+
+        ESPN's write endpoint can return a success status without having created
+        anything, so the response is not evidence. The only evidence is the offer
+        showing up on a subsequent read.
+
+        Matches on the set of player ids rather than a transaction id, because the
+        POST response body does not reliably carry one. A read that itself fails
+        returns False — unconfirmed, never assumed-good.
+        """
+        payload = plan.request_payload or {}
+        want = {str(i.get("playerId")) for i in payload.get("items", [])}
+        if not want:
+            return False
+        try:
+            pending = self.adapter.get_pending_trade_proposals(season)
+        except Exception:
+            return False
+        mine = str(payload.get("teamId"))
+        for txn in pending:
+            if str(txn.get("teamId")) != mine:
+                continue
+            got = {str(i.get("playerId")) for i in txn.get("items", [])}
+            if got == want:
+                return True
+        return False

@@ -49,12 +49,12 @@ approves; the agent generates the in-app steps to submit the claim in the ESPN a
 | id | command | event | actor | aggregate | context |
 |----|---------|-------|-------|-----------|---------|
 | C-201 | FetchWaiverSignals | E-202 | R-02 | AGG-signal-bundle | BC-signal |
-| C-202 | ScoreWaiverCandidates | E-207 | R-02 | AGG-waiver-rec | BC-analysis |
-| C-203 | ApproveWaiverClaim | E-211 | R-01 | AGG-decision-record | BC-waiver |
+| C-202 | ScoreWaiverCandidates | E-207 | R-02 | AGG-waiver-analysis | BC-analysis |
+| C-203 | ApproveWaiverClaim | E-211 | R-01 | AGG-waiver-claim | BC-waiver |
 
 ## Policies
 
 | id | when | then | crosses_context |
 |----|------|------|-----------------|
-| P-201 | E-207 | Identify the best add and generate the waiver recommendation (BC-analysis → BC-recommendation) | yes |
-| P-202 | E-211 | Log the decision record AND generate in-app steps (BC-approval → BC-audit) | yes |
+| P-201 | E-207 | Identify the best add and generate the waiver recommendation (BC-analysis → BC-waiver) | yes |
+| P-202 | E-211 | Log the decision record AND generate in-app steps (BC-waiver → BC-ledger) | yes |
