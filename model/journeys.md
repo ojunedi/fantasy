@@ -39,6 +39,7 @@ substep: scope
 | SYS-ESPN-NEWS | ESPN News API | third-party | Player news, injury updates, practice reports — keyless | kb |
 | SYS-FANTASYPROS | FantasyPros | third-party | Consensus projections — current source is ESPN; FantasyPros is the planned upgrade, architecture keeps projection source pluggable | assumed |
 | SYS-TAVILY | Tavily | third-party | Web search for targeted injury and news research — activates when API key is set, degrades gracefully without one | kb |
+| SYS-WEATHER | Open-Meteo | third-party | Temperature, wind and precipitation for outdoor games, keyless. Found during target architecture rather than during the storm — the code has used it since the game-environment work and nobody had written it down | session |
 
 ## Journeys
 

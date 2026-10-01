@@ -2,10 +2,10 @@
   "version": 2,
   "project": "Fantasy GM",
   "createdAt": "2026-09-30T15:15:25.613Z",
-  "updatedAt": "2026-10-01T18:39:00.498Z",
+  "updatedAt": "2026-10-01T19:36:51.348Z",
   "schema": "frictionless-discovery",
   "track": "discovery",
-  "stage": "target-arch",
+  "stage": "feature-slices",
   "stages": {
     "vision": {
       "status": "complete",
@@ -50,16 +50,28 @@
       "notes": ""
     },
     "target-arch": {
-      "status": "in-progress",
-      "artifacts": [],
+      "status": "complete",
+      "artifacts": [
+        "model/architecture/overview.md",
+        "model/architecture/tech-stack.md",
+        "model/architecture/components.md",
+        "model/architecture/data-model.md",
+        "model/architecture/integration.md",
+        "model/architecture/security.md",
+        "model/architecture/resilience.md",
+        "model/architecture/performance.md",
+        "model/architecture/frontend.md",
+        "model/nfrs.md"
+      ],
       "gate": {
         "name": "architecture-approved",
-        "passed": false
+        "passed": true,
+        "at": "2026-10-01T19:36:51.344Z"
       },
       "notes": ""
     },
     "feature-slices": {
-      "status": "todo",
+      "status": "in-progress",
       "artifacts": [],
       "gate": {
         "name": "slices-ready",
