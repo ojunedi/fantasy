@@ -30,7 +30,7 @@ One user, one machine, no multi-tenancy — so most of what this heading usually
 | data | at_rest | in_transit | masking |
 |------|---------|------------|---------|
 | ESPN session cookies | Environment only. Never written to the repo, the database, or a decision snapshot | HTTPS to ESPN | Not logged. The write payload is logged on failure; the cookies are passed separately and are not part of it |
-| Decision records | Unencrypted SQLite on a personal machine | Never leaves the machine | None needed — it is fantasy football scores and the manager's own reasoning |
+| Decision records | Unencrypted SQLite on a personal machine, and an unencrypted SQL dump in a private git repository the manager owns | Pushed to that repository's remote over whatever transport git is configured with | The dump carries the decisions table only, and is asserted to contain no session cookie, no API key, and no value read from the environment. It is fantasy football scores and the manager's own reasoning, so the exposure is the repository staying private |
 | LLM prompts | Not persisted beyond the run checkpoint | HTTPS to the provider | Rosters and projections are sent to the model. Nothing personal beyond the manager's own override text |
 
 ## Controls

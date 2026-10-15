@@ -53,6 +53,7 @@ Homonyms are kept as separate context-scoped rows on purpose. One word meaning t
 | T-043 | Offer | BC-trade | A package actually sent to a counterparty, awaiting their answer. The system can send one; only they can accept it | Not a proposal. Crossing from proposal to offer is the point past which nothing can be undone | yes |
 | T-044 | Backtest report | BC-ledger | A replay of past decisions against the naive baseline, using only data available at the time | Not a scorecard for one week — a report spans weeks | |
 | T-046 | Input snapshot | BC-lineup | Everything the agent saw, frozen when the decision was recorded | Never updated. A refreshed snapshot destroys the replay guarantee | yes |
+| T-047 | Decision log | BC-ledger | Every recorded decision with its input snapshot and its override reason. The irreplaceable half of the ledger — nothing else can reconstruct it | Not the whole of `decisions.db`, which also holds the weekly scorecards. Those are computed from the log and a backtest rebuilds them; the log itself cannot be rebuilt from anything | yes |
 
 <!--
 Nearly every row is flagged as a trap, which is high and is correct here.

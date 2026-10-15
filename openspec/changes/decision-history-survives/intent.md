@@ -62,10 +62,18 @@ The manager interacts with it through the CLI only, and only when something is w
 
 ## Open questions
 
-| # | Question | Owner | Blocking? |
-| --- | --- | --- | --- |
-| 1 | Is the backup repository created by this slice, or expected to exist with its remote already configured? Creating it puts auth failure on the first run; expecting it adds a setup step the manager performs once | manager | no |
-| 2 | **Does a restored decision need its LangGraph checkpoint to be replayable?** The input snapshot is preserved by AC-2, but if replay reads graph state as well, backing up only the decision store yields a record that can be *read* and not *re-run*. This changes the scope | manager | no — but it changes what "survives" means |
+None open.
+
+The backup repository is created by the manager, once, with its remote already
+configured; the slice is pointed at it by environment variable and names what is
+missing if it is not there. This matches how every other external dependency in
+the system is configured, and keeps the choice of remote — and whether it is
+private — out of the code.
+
+A restored decision is *readable*, not *replayable*. The frozen input snapshot
+and the backtest rebuild are the whole of what survives; re-running a restored
+decision through the agent is not in scope, and the agent's graph state is not
+backed up.
 
 ## Quick challenge
 
@@ -73,4 +81,4 @@ The manager interacts with it through the CLI only, and only when something is w
 
 They do not. The scope is now the decisions table alone, which makes commit-per-write correct again — every commit is a real decision — and leaves the restore path as clone, import, and one backtest run.
 
-**What remains unsure:** whether a restored decision is *replayable* or only *readable*. The input snapshot survives by AC-2, but if replay also reads LangGraph checkpoint state, then this slice preserves the record without preserving the ability to re-run it. That is open question 2 and it changes what "survives" means.
+**Settled since:** a restored decision is readable, not replayable. The input snapshot survives by AC-2 and the backtest rebuilds the scorecards from it, but re-running a restored decision through the agent is not in scope and the graph state is not backed up.

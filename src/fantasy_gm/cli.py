@@ -13,6 +13,9 @@ import os
 
 from dotenv import load_dotenv
 
+from fantasy_gm.db.backup import DecisionBackup
+from fantasy_gm.db.store import DecisionStore
+
 load_dotenv()
 
 
@@ -264,7 +267,19 @@ def main() -> None:
     p_bt.set_defaults(func=cmd_backtest)
 
     args = parser.parse_args()
-    args.func(args)
+
+    # Report before doing anything: weeks held off-machine but not here mean
+    # this is a replacement machine, or something was lost. Reports only —
+    # nothing is restored automatically.
+    store = DecisionStore()
+    DecisionBackup().report_missing_weeks(store._conn)
+
+    try:
+        args.func(args)
+    finally:
+        # One run, one commit. Runs at the end rather than inside each write,
+        # so no network call sits in the path that makes a decision durable.
+        store.backup_if_dirty()
 
 
 if __name__ == "__main__":

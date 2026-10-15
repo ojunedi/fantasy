@@ -216,7 +216,9 @@ def lineup_worker(settings: Any, run: Run, manager: RunManager,
 
     record = agent.decide(ctx, emit=emit)
 
-    DecisionStore(settings.db_path).save(record)
+    store = DecisionStore(settings.db_path)
+    store.save(record)
+    store.backup_if_dirty()
     return str(record.id)
 
 
@@ -293,7 +295,9 @@ def trade_worker(settings: Any, run: Run, manager: RunManager,
 
     record = agent.decide(ctx, emit=emit)
 
-    DecisionStore(settings.db_path).save(record)
+    store = DecisionStore(settings.db_path)
+    store.save(record)
+    store.backup_if_dirty()
     return str(record.id)
 
 

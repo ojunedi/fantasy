@@ -64,7 +64,16 @@ def _connect(path: Path = DB_PATH) -> sqlite3.Connection:
 
 
 class DecisionStore:
+    # What has been written and not yet copied off-machine, keyed by database.
+    # Shared across instances on purpose: a run opens several stores — the CLI
+    # one, the agent's, the web layer's — and the backup at the end of the run
+    # has to see what any of them wrote. Set by writes to the decisions table
+    # only; a backtest writing seventeen scorecards must not look like
+    # seventeen decisions.
+    _pending: dict[Path, tuple[int, int]] = {}
+
     def __init__(self, db_path: Path = DB_PATH):
+        self._db_path = Path(db_path)
         self._conn = _connect(db_path)
 
     def save(self, record: DecisionRecord) -> None:
@@ -94,6 +103,7 @@ class DecisionStore:
             },
         )
         self._conn.commit()
+        DecisionStore._pending[self._db_path] = (record.week, record.season)
 
     def record_human_response(
         self,
@@ -116,6 +126,7 @@ class DecisionStore:
             ),
         )
         self._conn.commit()
+        self._mark_pending(decision_id)
 
     def record_outcome(self, decision_id: UUID, outcome: dict) -> None:
         self._conn.execute(
@@ -123,6 +134,7 @@ class DecisionStore:
             (json.dumps(outcome), datetime.utcnow().isoformat(), str(decision_id)),
         )
         self._conn.commit()
+        self._mark_pending(decision_id)
 
     def get(self, decision_id: UUID) -> DecisionRecord | None:
         row = self._conn.execute(
@@ -170,6 +182,31 @@ class DecisionStore:
             },
         )
         self._conn.commit()
+
+    def _mark_pending(self, decision_id: UUID) -> None:
+        row = self._conn.execute(
+            "SELECT week, season FROM decisions WHERE id = ?", (str(decision_id),)
+        ).fetchone()
+        if row is not None:
+            DecisionStore._pending[self._db_path] = (row["week"], row["season"])
+
+    def backup_if_dirty(self) -> bool:
+        """Copy the decision log off this machine, if anything was written.
+
+        Called at the end of a run rather than inside each write: one run is
+        one commit, and no network call sits inside the path NFR-10 protects.
+        Returns whether a copy reached the remote; False is never fatal.
+        """
+        pending = DecisionStore._pending.get(self._db_path)
+        if pending is None:
+            return True
+        from fantasy_gm.db.backup import DecisionBackup
+
+        week, season = pending
+        reached_remote = DecisionBackup().back_up(self._conn, week=week, season=season)
+        if reached_remote:
+            DecisionStore._pending.pop(self._db_path, None)
+        return reached_remote
 
     def _row_to_record(self, row: sqlite3.Row) -> DecisionRecord:
         from fantasy_gm.models import DecisionType
