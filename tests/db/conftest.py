@@ -115,3 +115,56 @@ def _clear_pending_backups():
     DecisionStore._pending.clear()
     yield
     DecisionStore._pending.clear()
+
+
+def fake_backtester():
+    """A Backtester wired to in-memory league data.
+
+    Deliberately nothing to do with the decision log: the backtest replays
+    historical league data and never reads a decision. That is what makes the
+    scorecards safe to leave out of the backup, and this fixture is where it
+    is visible.
+    """
+    from fantasy_gm.eval.backtest import Backtester
+    from fantasy_gm.models import (
+        LeagueSettings, Platform, Player, Position, Roster, RosterPlayer,
+        RosterSlot, ScoringRule, ScoringRules, WaiverType,
+    )
+
+    starters = [(Position.QB, 1), (Position.RB, 1), (Position.WR, 2)]
+    slots = [RosterSlot(slot_id=f"{p.value}_{i}", position=p, is_starter=True)
+             for p, n in starters for i in range(n)]
+    slots += [RosterSlot(slot_id=f"BE_{i}", position=Position.BENCH, is_starter=False)
+              for i in range(2)]
+    settings = LeagueSettings(
+        platform=Platform.ESPN, league_id="1", season=2026, team_count=12,
+        roster_slots=slots,
+        scoring_rules=ScoringRules(rules=[ScoringRule(stat="53", points=1.0)]),
+        waiver_type=WaiverType.ROLLING, playoff_start_week=15,
+        playoff_weeks=[15], regular_season_weeks=list(range(1, 15)),
+    )
+
+    def player(pid: str, position: Position) -> Player:
+        return Player(platform_id=pid, name=f"P{pid}", position=position,
+                      eligible_positions=[position], nfl_team="1")
+
+    roster_players = [
+        RosterPlayer(player=player("1", Position.QB), slot=Position.QB, is_starter=True),
+        RosterPlayer(player=player("2", Position.RB), slot=Position.RB, is_starter=True),
+        RosterPlayer(player=player("3", Position.WR), slot=Position.WR, is_starter=True),
+        RosterPlayer(player=player("4", Position.WR), slot=Position.WR, is_starter=True),
+        RosterPlayer(player=player("5", Position.RB), slot=Position.BENCH, is_starter=False),
+    ]
+
+    class _Platform:
+        def get_roster(self, team_id, week, season):
+            return Roster(team_id=team_id, team_name="T", owner_name="O",
+                          players=roster_players, week=week, season=season)
+
+    return Backtester(
+        platform=_Platform(), team_id="8", settings=settings,
+        projection_fetcher=lambda week, season: [],
+        actual_score_fetcher=lambda week, season: {
+            rp.player.platform_id: 10.0 + week for rp in roster_players
+        },
+    )

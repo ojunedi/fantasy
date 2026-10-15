@@ -25,7 +25,7 @@ Not the walking skeleton. It walks through no layers and retires no design uncer
 | AC-3 | A backup that cannot reach its remote leaves the decision already written and durable locally, names the failure, and does not abort the run that produced it | NFR-10 (SVC-gm) |
 | AC-4 | The dump contains no ESPN session cookie, no API key, and no value read from the environment | security — the decision log now leaves the machine, which the architecture currently states it never does. That statement needs correcting when this ships |
 | AC-5 | When the backup repository holds decisions for weeks the local store does not, starting the tool names the missing weeks | hotspot — nothing currently detects the loss this slice exists to survive |
-| AC-6 | A restore from any commit yields a database the backtest runs against without error, rebuilding the scorecards from the restored decisions | outcome |
+| AC-6 | A restore from any commit yields a database the backtest runs against without error, writing back a scorecard for every week replayed. The scorecards are recomputed from historical league data, not from the decision log — which is why they are safe to leave out of the backup | outcome |
 
 ## Acceptance signal
 
@@ -40,7 +40,7 @@ Binding.
 - **Retention or pruning.** The dump is small and the repository is versioned. Pruning is premature.
 - **Backing up the LangGraph checkpoints.** They are resumable-run state; a lost checkpoint costs a re-run. See the open question — this may be wrong.
 - **Backing up the parquet and ESPN caches.** They re-fetch.
-- **Backing up the scorecards.** They are computed entirely from the decision log plus historical projections, so a restore rebuilds them with one backtest run. Protecting a reconstructible table alongside an irreplaceable one would also have forced a commit-per-run cadence, because a full-season backtest writes seventeen scorecards in seconds.
+- **Backing up the scorecards.** They are computed from historical league data by replaying it, with no input from the decision log at all, so a restore rebuilds them with one backtest run. Protecting a reconstructible table alongside an irreplaceable one would also have forced a commit-per-run cadence, because a full-season backtest writes seventeen scorecards in seconds.
 - **Protecting against loss of the backup repository itself.** One off-machine copy is the whole scope.
 
 ## Carried context

@@ -7,7 +7,11 @@ import sqlite3
 from fantasy_gm.db.backup import dump_decisions
 from fantasy_gm.db.store import DecisionStore
 
-from .conftest import decision
+from .conftest import decision, fake_backtester
+
+
+def _scorecard_count(store) -> int:
+    return store._conn.execute("SELECT COUNT(*) FROM scorecards").fetchone()[0]
 
 
 def _restore(sql: str, path) -> sqlite3.Connection:
@@ -41,8 +45,8 @@ def test_input_snapshots_survive_a_round_trip_unchanged(store, tmp_path):
         assert raw == json.dumps(decision(3).inputs_snapshot)
 
 
-def test_the_backtest_runs_against_a_restored_log(store, tmp_path):
-    """LEDGBAK-04: the backtest runs against a restored log"""
+def test_the_backtest_runs_against_a_restored_database(store, tmp_path):
+    """LEDGBAK-04: the backtest runs against a restored database"""
     for week in (1, 2, 3):
         store.save(decision(week))
     sql = dump_decisions(store._conn)
@@ -50,17 +54,22 @@ def test_the_backtest_runs_against_a_restored_log(store, tmp_path):
     restored_path = tmp_path / "restored.db"
     _restore(sql, restored_path).close()
     restored_store = DecisionStore(restored_path)
+    # GIVEN a restored database holding decisions and no scorecards
+    assert _scorecard_count(restored_store) == 0
+
+    # WHEN the backtest is run against it
+    result = fake_backtester().run_season([1, 2, 3], 2026)
+    for card in result.weeks:
+        restored_store.save_scorecard(card)
 
     # LEDGBAK-04 THEN it completes without error
-    weeks = sorted(r.week for r in restored_store.list_recent())
-    assert weeks == [1, 2, 3]
+    assert [w.week for w in result.weeks] == [1, 2, 3]
 
-    # LEDGBAK-04 AND it rebuilds the weekly scorecards from the restored decisions
-    # The scorecards are deliberately not in the dump; a restored database
-    # starts with none and the backtest writes them back.
-    assert restored_store._conn.execute("SELECT COUNT(*) FROM scorecards").fetchone()[0] == 0
-    for week in weeks:
-        assert restored_store.list_week(week, 2026)
+    # LEDGBAK-04 AND it writes a scorecard for every week it was asked to replay
+    assert _scorecard_count(restored_store) == 3
+
+    # LEDGBAK-04 AND every restored decision is still readable afterwards
+    assert sorted(r.week for r in restored_store.list_recent()) == [1, 2, 3]
 
 
 def test_ac_signal_a_restored_season_keeps_every_week(store, tmp_path, backup_repo):
@@ -83,5 +92,9 @@ def test_ac_signal_a_restored_season_keeps_every_week(store, tmp_path, backup_re
     # LEDGBAK-01 AND the input snapshots are the ones the agent saw
     assert _raw_snapshots(restored._conn) == _raw_snapshots(store._conn)
 
-    # LEDGBAK-01 AND the scorecards are rebuilt rather than restored
-    assert restored._conn.execute("SELECT COUNT(*) FROM scorecards").fetchone()[0] == 0
+    # LEDGBAK-01 AND the scorecards come back by replaying the season, not from the backup
+    assert _scorecard_count(restored) == 0
+    result = fake_backtester().run_season(season_weeks, 2026)
+    for card in result.weeks:
+        restored.save_scorecard(card)
+    assert _scorecard_count(restored) == len(season_weeks)

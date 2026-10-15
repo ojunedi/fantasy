@@ -148,3 +148,29 @@ def test_the_backup_repository_is_missing_or_has_no_remote(store, tmp_path, monk
 
     # LEDGBAK-06 AND no partial or empty commit is created
     assert _commit_count(no_remote) == 0
+
+
+def test_no_backup_repository_is_configured_at_all(store, tmp_path, monkeypatch, caplog):
+    """LEDGBAK-06: the backup repository is missing or has no remote configured (nothing configured)"""
+    # The other half of this scenario's GIVEN, and the state of every machine
+    # before setup: the setting is unset entirely.
+    monkeypatch.delenv("FANTASY_GM_BACKUP_REPO", raising=False)
+    rec = decision(4)
+
+    with caplog.at_level("WARNING"):
+        outcome, steps = _run_that_records(store, rec)
+
+    # LEDGBAK-06 THEN the manager is shown a message naming what is not configured
+    assert "no backup repository configured" in caplog.text.lower()
+    assert "FANTASY_GM_BACKUP_REPO" in caplog.text
+
+    # LEDGBAK-06 AND the decision is written to the local decision log
+    assert DecisionStore(store._db_path).get(rec.id) is not None
+
+    # LEDGBAK-06 AND the run reports complete
+    assert outcome == "complete"
+    assert steps == ["decision recorded", "work after the backup"]
+
+    # LEDGBAK-06 AND no partial or empty commit is created
+    # Nothing was written anywhere: no dump file exists outside a repository.
+    assert list(tmp_path.glob("**/decisions.sql")) == []

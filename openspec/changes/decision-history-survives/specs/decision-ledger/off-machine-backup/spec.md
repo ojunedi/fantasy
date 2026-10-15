@@ -33,7 +33,7 @@ Serves: AC-1
 
 ### Requirement: A restored decision log is byte-identical and usable
 
-The system SHALL produce a dump that, restored into an empty database, reproduces every stored input snapshot byte for byte — no re-serialisation, no timestamp normalisation, no key reordering — and yields a decision log the backtest runs against without error.
+The system SHALL produce a dump that, restored into an empty database, reproduces every stored input snapshot byte for byte — no re-serialisation, no timestamp normalisation, no key reordering — and yields a database the rest of the system reads and writes without error, including the backtest, which recomputes its scorecards from historical league data rather than from the decision log.
 
 Serves: AC-2, AC-6
 
@@ -45,12 +45,13 @@ Serves: AC-2, AC-6
 - **THEN** every snapshot is byte-identical to the original
 - **AND** no snapshot has been rewritten by the backup or restore
 
-#### Scenario: LEDGBAK-04 — The backtest runs against a restored log
+#### Scenario: LEDGBAK-04 — The backtest runs against a restored database
 
-- **GIVEN** a database restored from any commit in the backup repository
+- **GIVEN** a database restored from any commit in the backup repository, holding decisions and no scorecards
 - **WHEN** the backtest is run against it
 - **THEN** it completes without error
-- **AND** it rebuilds the weekly scorecards from the restored decisions
+- **AND** it writes a scorecard for every week it was asked to replay
+- **AND** every restored decision is still readable afterwards
 
 ### Requirement: A backup failure never costs a decision or a run
 

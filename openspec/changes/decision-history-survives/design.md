@@ -38,6 +38,7 @@ chooses whether it is private.
 | `DecisionStore` | MODIFY | Sets a dirty flag on decision writes, not on `save_scorecard` |
 | `DecisionStore.backup_if_dirty` | CREATE | Called at run end; no-op when nothing was written |
 | `cli.main` | MODIFY | Startup missing-week report; backup after each command |
+| `web.runs` | MODIFY | Backs up after its two decision writes — a web run is a run |
 
 ## Domain
 
@@ -114,9 +115,10 @@ sequenceDiagram
 | LEDGBAK-01 | AC-1 | integration | `tests/db/test_backup.py` | `LEDGBAK-01: a recorded decision is committed off-machine` | required |
 | LEDGBAK-02 | AC-1 | integration | `tests/db/test_backup.py` | `LEDGBAK-02: computed scorecards are not committed` | required |
 | LEDGBAK-03 | AC-2 | integration | `tests/db/test_backup_restore.py` | `LEDGBAK-03: input snapshots survive a round trip unchanged` | required |
-| LEDGBAK-04 | AC-6 | integration | `tests/db/test_backup_restore.py` | `LEDGBAK-04: the backtest runs against a restored log` | required |
+| LEDGBAK-04 | AC-6 | integration | `tests/db/test_backup_restore.py` | `LEDGBAK-04: the backtest runs against a restored database` | required |
 | LEDGBAK-05 | AC-3 | integration | `tests/db/test_backup.py` | `LEDGBAK-05: the remote is unreachable` | required |
 | LEDGBAK-06 | AC-3 | integration | `tests/db/test_backup.py` | `LEDGBAK-06: the backup repository is missing or has no remote configured` | required |
+| LEDGBAK-06 | AC-3 | integration | `tests/db/test_backup.py` | `LEDGBAK-06: the backup repository is missing or has no remote configured (nothing configured)` | required |
 | LEDGBAK-07 | AC-4 | integration | `tests/db/test_backup.py` | `LEDGBAK-07: the dump is inspected for secrets` | required |
 | LEDGBAK-08 | AC-5 | unit | `tests/db/test_backup_weeks.py` | `LEDGBAK-08: the local log is missing weeks the backup holds` | required |
 | LEDGBAK-09 | AC-5 | unit | `tests/db/test_backup_weeks.py` | `LEDGBAK-09: the local log is level with or ahead of the backup` | required |
