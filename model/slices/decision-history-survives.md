@@ -1,7 +1,7 @@
 ---
 id: S-001
 slice_id: decision-history-survives
-status: todo
+status: complete
 ---
 
 # My season's decision record survives losing the laptop
