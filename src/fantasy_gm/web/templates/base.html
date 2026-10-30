@@ -20,6 +20,10 @@
 </head>
 <body>
 
+<div id="nudge-banner"
+     hx-get="/api/nudge/banner"
+     hx-trigger="load, every 60s"
+     hx-swap="outerHTML"></div>
 {% block chyron %}{% endblock %}
 
 <nav class="nav">

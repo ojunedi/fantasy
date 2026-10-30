@@ -1,0 +1,25 @@
+{# Pre-kickoff nudge banner.
+   Fetched by the base template on load and every 60 s via htmx outerHTML swap.
+   When inactive, renders an empty polling div so the next poll can re-check. #}
+{% if active %}
+<div class="banner" role="alert"
+     id="nudge-banner"
+     hx-get="/api/nudge/banner"
+     hx-trigger="every 60s"
+     hx-swap="outerHTML">
+  <strong>Lineup recommendation unread</strong> —
+  kickoff in {{ minutes_remaining }} min.
+  <a href="/history">Review now</a>
+  <button type="button"
+          onclick="this.closest('#nudge-banner').remove()"
+          style="margin-left:12px;background:none;border:none;cursor:pointer;color:inherit;">
+    Dismiss
+  </button>
+</div>
+{% else %}
+<div id="nudge-banner"
+     hx-get="/api/nudge/banner"
+     hx-trigger="every 60s"
+     hx-swap="outerHTML">
+</div>
+{% endif %}

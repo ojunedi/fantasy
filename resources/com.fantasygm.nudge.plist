@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.fantasygm.nudge</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <!-- install-nudge-agent.sh rewrites this path to the repo's .venv python -->
+    <string>PYTHON_PLACEHOLDER</string>
+    <string>-m</string>
+    <string>fantasy_gm.nudge.cli</string>
+  </array>
+
+  <!--
+    Fire every 15 minutes on Sunday, 9 AM through 1 PM local time.
+    The check itself is idempotent — multiple fires in the window are fine.
+    StartCalendarInterval fires once per matching minute; using four entries
+    gives :00, :15, :30, :45 past each hour.
+  -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>11</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>11</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>11</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>45</integer></dict>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>REPO_ROOT_PLACEHOLDER/data/nudge.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>REPO_ROOT_PLACEHOLDER/data/nudge.log</string>
+
+  <!-- Only run when the user is logged in (not at the login screen). -->
+  <key>SessionCreate</key>
+  <false/>
+
+</dict>
+</plist>

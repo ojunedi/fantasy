@@ -53,12 +53,24 @@ CREATE TABLE IF NOT EXISTS scorecards (
 );
 """
 
+CREATE_NUDGE_LOG = """
+CREATE TABLE IF NOT EXISTS nudge_log (
+    id        INTEGER PRIMARY KEY,
+    week      INTEGER NOT NULL,
+    season    INTEGER NOT NULL,
+    failed_at TEXT NOT NULL,
+    reason    TEXT NOT NULL
+);
+"""
+
+DROP_NUDGE_LOG = "DROP TABLE IF EXISTS nudge_log;"
+
 
 def _connect(path: Path = DB_PATH) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
-    conn.executescript(CREATE_DECISIONS + CREATE_SCORECARDS)
+    conn.executescript(CREATE_DECISIONS + CREATE_SCORECARDS + CREATE_NUDGE_LOG)
     conn.commit()
     return conn
 
@@ -180,6 +192,13 @@ class DecisionStore:
                     else None
                 ),
             },
+        )
+        self._conn.commit()
+
+    def log_nudge_failure(self, week: int, season: int, reason: str) -> None:
+        self._conn.execute(
+            "INSERT INTO nudge_log (week, season, failed_at, reason) VALUES (?, ?, ?, ?)",
+            (week, season, datetime.utcnow().isoformat(), reason),
         )
         self._conn.commit()
 
