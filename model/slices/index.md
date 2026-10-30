@@ -14,7 +14,7 @@ Thirteen slices. Three touch the interface.
 | id | slice_id | name | interface | depends_on | status | openspec_change |
 |----|----------|------|-----------|------------|--------|-----------------|
 | S-001 | decision-history-survives | My season's decision record survives losing the laptop | | | complete | decision-history-survives |
-| S-002 | pre-kickoff-nudge | I am nudged before kickoff when a recommendation is sitting unread | yes | | todo | pre-kickoff-nudge |
+| S-002 | pre-kickoff-nudge | I am nudged before kickoff when a recommendation is sitting unread | yes | | complete | pre-kickoff-nudge |
 | S-003 | waiver-add-worth-making | The agent tells me whether there is a waiver add worth making, and if so which | yes | | todo | |
 | S-004 | one-approval-gate | There is one approval gate, not two that can silently disagree | | | todo | |
 | S-005 | waiver-claim-filed | An approved claim is filed through the API and confirmed, not typed by hand | | S-003,S-004 | todo | |
