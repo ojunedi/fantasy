@@ -25,7 +25,7 @@ Thirteen slices. Three touch the interface.
 | S-010 | signals-declare-staleness | The agent declines to answer when its signals are too stale to trust | | | complete | signals-declare-staleness |
 | S-011 | brief-integrity | A brief cannot contain a number the analysis never computed | | | complete | brief-integrity |
 | S-012 | claim-would-clear | Waiver recommendations account for whether the claim would actually clear | | S-006 | blocked | |
-| S-013 | fantasypros-projections | Projections come from FantasyPros rather than ESPN | | | todo | |
+| S-013 | fantasypros-projections | Projections come from FantasyPros rather than ESPN | | | complete | fantasypros-projections |
 
 ## Sequence
 

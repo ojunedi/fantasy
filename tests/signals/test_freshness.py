@@ -12,7 +12,7 @@ NOW = datetime(2026, 11, 1, 15, 0)
 def _bundle(**ages) -> SignalBundle:
     """ages: name -> hours old, None for unavailable, 'unstamped' for no as-of."""
     defaults = {"projections": 0.5, "injuries": 0.1, "usage_trends": 1,
-                "vegas_lines": 1, "weather": 1}
+                "vegas_lines": 1, "weather": 1, "expert_rankings": 12}
     defaults.update(ages)
     availability = []
     for name, age in defaults.items():

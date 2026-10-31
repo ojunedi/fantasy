@@ -280,6 +280,20 @@ class LineupToolContext(ToolContext):
             if inj.status.value != "ACTIVE":
                 lines.append(f"  {pid} | {inj.player_name}: {inj.status.value}")
         lines.append("  (all other rostered players ACTIVE)")
+        if sig.expert_rankings:
+            names = {rp.player.platform_id: rp.player.name for rp in self.roster().players}
+            lines.append("\nFantasyPros consensus rank (ESPN projection rank) per player:")
+            for pid, r in sig.expert_rankings.items():
+                espn = f"ESPN #{r.espn_pos_rank}" if r.espn_pos_rank else "ESPN rank n/a"
+                lines.append(f"  {pid} | {names.get(pid, pid)}: experts {r.pos_rank or r.ecr} "
+                             f"(ecr {r.ecr:g}, spread {r.sd if r.sd is not None else 'n/a'}) | {espn}")
+            flagged = disagreements(sig.expert_rankings)
+            if flagged:
+                lines.append("\nExperts and ESPN disagree sharply on:")
+                for r in flagged:
+                    lines.append(f"  {names.get(r.player_id, r.player_id)}: ESPN ranks him "
+                                 f"{r.position}{r.espn_pos_rank}, the experts {r.position}{round(r.ecr)} "
+                                 f"(spread {r.sd:g}) — worth a second look.")
         return "\n".join(lines)
 
     def _tool_get_league_context(self, _: dict) -> str:
@@ -415,3 +429,16 @@ class LineupToolContext(ToolContext):
     def _tool_abstain(self, tool_input: dict) -> str:
         import json
         return json.dumps(tool_input)
+
+
+def disagreements(rankings: dict) -> list:
+    """Players whose ESPN positional rank and expert rank differ by at least 6
+    spots and by more than twice the experts' spread."""
+    out = []
+    for r in rankings.values():
+        if r.espn_pos_rank is None:
+            continue
+        gap = abs(r.espn_pos_rank - r.ecr)
+        if gap >= 6 and gap > 2 * (r.sd or 0):
+            out.append(r)
+    return out

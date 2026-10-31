@@ -108,8 +108,9 @@ def collect_signals(
     team_abbrevs.discard(None)
     if use_nflverse and team_abbrevs:
         _enrich_from_nflverse(bundle, roster_players, week, season)
+        _collect_expert_rankings(bundle, adapter, roster_players, week, season)
     else:
-        for name in ("usage_trends", "weather", "vegas_lines"):
+        for name in ("usage_trends", "weather", "vegas_lines", "expert_rankings"):
             bundle.availability.append(SignalAvailability(
                 name=name, available=False, source="nflverse/open-meteo",
                 note="skipped — roster carries no NFL-team info",
@@ -227,3 +228,48 @@ def _enrich_from_nflverse(
         bundle.availability.append(SignalAvailability(
             name="weather", available=False, source="open-meteo", note=f"error: {e}"
         ))
+
+
+def _collect_expert_rankings(bundle: SignalBundle, adapter, roster_players: list,
+                             week: int, season: int) -> None:
+    """FantasyPros consensus ranks for rostered players, beside ESPN's projections.
+
+    Optional and best effort: never raises. Stamped with the feed's own scrape
+    date (I-01). ESPN's positional rank comes from the same cached projections
+    read the lineup already uses, so no extra ESPN request is made.
+    """
+    from datetime import datetime
+
+    from fantasy_gm.models import ExpertRanking
+    from fantasy_gm.signals.sources import nflverse as nv
+
+    try:
+        by_espn, scrape_date = nv.expert_rankings_by_espn()
+        espn_rank: dict[str, int] = {}
+        try:
+            by_pos: dict[str, list] = {}
+            for p in adapter.get_player_projections(week, season):
+                by_pos.setdefault(p.position.value, []).append(p)
+            for plist in by_pos.values():
+                plist.sort(key=lambda p: p.projected_points, reverse=True)
+                for i, p in enumerate(plist, start=1):
+                    espn_rank[p.player_id] = i
+        except Exception:
+            pass
+        for rp in roster_players:
+            pid = rp.player.platform_id
+            row = by_espn.get(pid)
+            if row is None:
+                continue
+            bundle.expert_rankings[pid] = ExpertRanking(
+                player_id=pid, espn_pos_rank=espn_rank.get(pid), **row)
+        as_of = datetime.strptime(scrape_date, "%Y-%m-%d") if scrape_date else None
+        bundle.availability.append(SignalAvailability(
+            name="expert_rankings", available=bool(bundle.expert_rankings), as_of=as_of,
+            source="FantasyPros (via nflverse)",
+            note=f"{len(bundle.expert_rankings)}/{len(roster_players)} rostered players ranked",
+        ))
+    except Exception as e:
+        bundle.availability.append(SignalAvailability(
+            name="expert_rankings", available=False, source="FantasyPros (via nflverse)",
+            note=f"error: {e}"))

@@ -28,6 +28,8 @@ THRESHOLDS: dict[str, float] = {
     "usage_trends": 7 * 24 * HOUR,
     "vegas_lines": 24 * HOUR,
     "weather": 12 * HOUR,
+    # Stamped with the feed's scrape *date* (midnight), so a day's slack is built in.
+    "expert_rankings": 48 * HOUR,
 }
 REQUIRED = frozenset({"projections", "injuries"})
 

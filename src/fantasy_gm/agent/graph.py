@@ -112,6 +112,11 @@ class LineupGraphAgent(GraphAgent):
                 for rp in ctx.roster().players
             ],
             "projections": {pid: pj.projected_points for pid, pj in signals.projections.items()},
+            # What the experts said, and on which day — beside ESPN, never instead of it (I-14).
+            "expert_rankings": {pid: {"ecr": r.ecr, "sd": r.sd, "pos_rank": r.pos_rank,
+                                      "espn_pos_rank": r.espn_pos_rank,
+                                      "scrape_date": r.scrape_date}
+                                for pid, r in signals.expert_rankings.items()},
             "signal_availability": [
                 {"name": a.name, "available": a.available, "source": a.source,
                  "age_seconds": a.age_seconds, "note": a.note}

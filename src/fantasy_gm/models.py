@@ -264,6 +264,19 @@ class VegasLine(BaseModel):
     week: int
 
 
+class ExpertRanking(BaseModel):
+    """FantasyPros consensus rank at a position, beside ESPN's projection."""
+    player_id: str              # ESPN id
+    position: str
+    ecr: float                  # expert consensus rank (lower is better)
+    sd: float | None = None     # spread of the experts' ranks
+    best: int | None = None
+    worst: int | None = None
+    pos_rank: str | None = None # e.g. "RB2"
+    scrape_date: str            # the feed's own date — the as-of time (I-01)
+    espn_pos_rank: int | None = None  # ESPN's rank by projected points at the position
+
+
 class UsageTrend(BaseModel):
     player_id: str
     player_name: str

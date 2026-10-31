@@ -220,3 +220,40 @@ def schedule_rows(season: int) -> list[dict]:
     for r in df.select(have).iter_rows(named=True):
         out.append(dict(r))
     return out
+
+
+# This league scores a point per reception, so skill positions use the PPR pages.
+_RANKING_PAGES = {"ppr-rb", "ppr-wr", "ppr-te", "qb", "k", "dst"}
+
+
+def expert_rankings_by_espn() -> tuple[dict[str, dict], str | None]:
+    """FantasyPros weekly consensus rankings keyed by ESPN player id, and the
+    feed's scrape date. Players without an ESPN id in the id map are skipped."""
+    rankings = load_ff_rankings()
+    ids = load_ff_playerids()
+    fp_to_espn: dict[str, str] = {}
+    for row in ids.iter_rows(named=True):
+        fp, espn = row.get("fantasypros_id"), row.get("espn_id")
+        if fp is None or espn is None or str(espn) == "":
+            continue
+        fp_to_espn[str(int(fp)) if _is_intlike(fp) else str(fp)] = (
+            str(int(espn)) if _is_intlike(espn) else str(espn))
+    out: dict[str, dict] = {}
+    scrape_date = None
+    for row in rankings.iter_rows(named=True):
+        if row.get("page") not in _RANKING_PAGES or row.get("ecr") is None:
+            continue
+        fp = row.get("fantasypros_id")
+        espn = fp_to_espn.get(str(int(fp)) if _is_intlike(fp) else str(fp))
+        if espn is None:
+            continue
+        scrape_date = scrape_date or row.get("scrape_date")
+        out[espn] = {
+            "position": row.get("page_pos") or row.get("pos"),
+            "ecr": float(row["ecr"]),
+            "sd": float(row["sd"]) if row.get("sd") is not None else None,
+            "best": row.get("best"), "worst": row.get("worst"),
+            "pos_rank": row.get("pos_rank"),
+            "scrape_date": row.get("scrape_date"),
+        }
+    return out, scrape_date

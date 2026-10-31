@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Protocol
 
 from fantasy_gm.models import (
+    ExpertRanking,
     InjuryReport,
     PlayerProjection,
     UsageTrend,
@@ -52,6 +53,7 @@ class SignalBundle:
     usage: dict[str, UsageTrend] = field(default_factory=dict)
     weather: dict[str, WeatherReport] = field(default_factory=dict)
     vegas: dict[str, VegasLine] = field(default_factory=dict)
+    expert_rankings: dict[str, "ExpertRanking"] = field(default_factory=dict)
     availability: list[SignalAvailability] = field(default_factory=list)
 
     def staleness_map(self) -> dict[str, float]:

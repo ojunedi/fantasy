@@ -1,14 +1,16 @@
 ---
 id: S-013
 slice_id: fantasypros-projections
-status: todo
+status: complete
 ---
 
 # Projections come from FantasyPros rather than ESPN
 
 ## Outcome
 
-The primary projection source becomes FantasyPros consensus, with ESPN remaining as the fallback. Every downstream number improves slightly; nothing changes shape.
+FantasyPros consensus rankings sit beside ESPN's projections, so the lineup agent sees where the experts disagree with ESPN about a player. ESPN's projected points stay the projection source.
+
+Scoped this way by the manager: FantasyPros projected *points* need a paid API or scraping their site, while their consensus *rankings* (rank, spread, best/worst) arrive free and date-stamped through nflverse.
 
 ## Contexts
 
@@ -40,8 +42,8 @@ mapped in `event-maps/`.
 
 | id | question | owner |
 |----|----------|-------|
-| — | Scrape or paid API? The free path has rate-limit risk at peak times, which is exactly when a lineup decision is being made | R-01 |
-| — | What happens to a backtest that spans the switch? Mixed-source history is defensible if each row records its source, and misleading if it does not | R-01 |
+| — | Scrape or paid API? **Resolved: neither** — the free nflverse feed of FantasyPros consensus rankings, beside ESPN points | manager |
+| — | What happens to a backtest that spans the switch? **No switch happens** — backtests keep scoring on ESPN projections; rankings are recorded with their scrape date on each decision | — |
 
 <!--
 Last, and genuinely last. It improves every number slightly, unblocks nothing,
