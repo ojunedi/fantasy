@@ -173,3 +173,32 @@ def team(request: Request,
          store: DecisionStore = Depends(get_store)) -> HTMLResponse:
     ctx = build_team_context(request, adapter, settings, cache, store)
     return request.app.state.templates.TemplateResponse(request, "team.html", ctx)
+
+
+@router.get("/news", response_class=HTMLResponse)
+def news(request: Request,
+         adapter: ESPNAdapter = Depends(get_adapter),
+         settings: WebSettings = Depends(get_settings),
+         cache: ReadCache = Depends(get_reads)) -> HTMLResponse:
+    """League stories, with those about my players and their teams first."""
+    from fantasy_gm.signals.news import cached_articles
+
+    week = reads.current_week(adapter, settings, cache)
+    try:
+        players = reads.roster(adapter, cache, settings.team_id, week, settings.season).players
+    except Exception:
+        players = []
+    try:
+        league = cached_articles()
+    except Exception:
+        league = None  # shown as a banner; team feeds still render
+    team_feeds = {}
+    for team in sorted({str(rp.player.nfl_team) for rp in players if rp.player.nfl_team}):
+        try:
+            team_feeds[team] = cached_articles(team)
+        except Exception:
+            continue  # one team failing leaves the others shown
+    return request.app.state.templates.TemplateResponse(request, "news.html", {
+        "active": "news",
+        "news": context.news_view(league, team_feeds, players),
+    })

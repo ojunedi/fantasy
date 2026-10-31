@@ -26,7 +26,7 @@ Fifteen slices. Five touch the interface; the last two are a research surface ad
 | S-011 | brief-integrity | A brief cannot contain a number the analysis never computed | | | complete | brief-integrity |
 | S-012 | claim-would-clear | Waiver recommendations account for whether the claim would actually clear | | S-006 | blocked | |
 | S-013 | fantasypros-projections | Projections come from FantasyPros rather than ESPN | | | complete | fantasypros-projections |
-| S-014 | news-feed | I can read the latest news on my players and their teams | yes | | todo | |
+| S-014 | news-feed | I can read the latest news on my players and their teams | yes | | complete | news-feed |
 | S-015 | player-card | Any player's name opens a card with his photo, season stats and recent news | yes | S-014 | todo | |
 
 ## Sequence

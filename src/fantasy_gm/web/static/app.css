@@ -718,3 +718,10 @@ tr.is-played .proj { opacity: 0.55; }
   margin-bottom: 8px;
 }
 #run-section:not(:empty) { margin-top: 28px; }
+
+/* News: hairline-ruled list, like the tables. */
+.news { list-style: none; margin: 0 0 24px; padding: 0; }
+.news li { padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.news li a { color: var(--black); font-weight: 500; text-decoration: none; }
+.news li a:hover { text-decoration: underline; }
+.news li p { margin: 4px 0 0; font-size: 14px; color: var(--slate); }

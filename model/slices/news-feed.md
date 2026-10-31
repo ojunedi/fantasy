@@ -1,7 +1,7 @@
 ---
 id: S-014
 slice_id: news-feed
-status: todo
+status: complete
 ---
 
 # I can read the latest news on my players and their teams

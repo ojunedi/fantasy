@@ -1092,6 +1092,75 @@ def claim_check_view(record: "DecisionRecord") -> dict:
     }
 
 
+def relative_time(published: str | None, now=None) -> str:
+    """'2h ago' from an ISO timestamp; the date itself when older than a week."""
+    from datetime import datetime, timezone
+    if not published:
+        return "time unknown"
+    try:
+        when = datetime.fromisoformat(published.replace("Z", "+00:00"))
+    except ValueError:
+        return published
+    now = now or datetime.now(timezone.utc)
+    secs = (now - when).total_seconds()
+    if secs < 3600:
+        return f"{max(1, int(secs // 60))}m ago"
+    if secs < 86400:
+        return f"{int(secs // 3600)}h ago"
+    if secs < 7 * 86400:
+        return f"{int(secs // 86400)}d ago"
+    return when.strftime("%b %-d")
+
+
+NEWS_SECTION_LIMIT = 25
+
+
+def news_view(league: list[dict] | None, team_feeds: dict[str, list[dict]],
+              roster_players: list, now=None) -> dict:
+    """Group stories: about my players, about their teams, around the league.
+
+    Each story once (de-duplicated by id across feeds), newest first in each
+    group. "About my player" comes from ESPN's own athlete tags, which carry
+    the roster's ESPN ids.
+    """
+    from fantasy_gm.signals.collector import ESPN_PRO_TEAM_ABBR
+
+    names = {rp.player.platform_id: rp.player.name for rp in roster_players}
+    my_teams = {str(rp.player.nfl_team) for rp in roster_players if rp.player.nfl_team}
+    seen: set[str] = set()
+    groups: dict[str, list[dict]] = {"players": [], "teams": [], "league": []}
+
+    def place(article: dict, from_league: bool) -> None:
+        if article["id"] in seen:
+            return
+        mine = [names[a] for a in article["athlete_ids"] if a in names]
+        teams = [t for t in article["team_ids"] if t in my_teams]
+        if mine:
+            group, about = "players", "Your player" + ("s" if len(mine) > 1 else "") + ": " + ", ".join(mine)
+        elif teams:
+            group, about = "teams", ", ".join(ESPN_PRO_TEAM_ABBR.get(t, t) for t in teams)
+        elif from_league:
+            group, about = "league", ""
+        else:
+            return
+        seen.add(article["id"])
+        groups[group].append({**article, "about": about,
+                              "when": relative_time(article.get("published"), now)})
+
+    for a in league or []:
+        place(a, from_league=True)
+    for feed in team_feeds.values():
+        for a in feed:
+            place(a, from_league=False)
+    for items in groups.values():
+        items.sort(key=lambda a: a.get("published") or "", reverse=True)
+    # Twelve team feeds return a few hundred stories; the page shows the newest.
+    # Stories about my own players are never cut.
+    for key in ("teams", "league"):
+        groups[key] = groups[key][:NEWS_SECTION_LIMIT]
+    return {**groups, "league_failed": league is None}
+
+
 def trade_send_plan_view(plan) -> dict:
     """Render a `TradeSendPlan` for the confirmation/steps page."""
     return {

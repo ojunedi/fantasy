@@ -2,7 +2,7 @@
   "version": 2,
   "project": "Fantasy GM",
   "createdAt": "2026-09-30T15:15:25.613Z",
-  "updatedAt": "2026-10-31T05:04:05.558Z",
+  "updatedAt": "2026-10-31T05:05:17.359Z",
   "schema": "frictionless-discovery",
   "track": "delivery",
   "stage": "feature-slices",
@@ -71,16 +71,16 @@
       "notes": ""
     },
     "feature-slices": {
-      "status": "in-progress",
+      "status": "complete",
       "artifacts": [],
       "gate": {
         "name": "slices-ready",
         "passed": true,
-        "at": "2026-10-01T20:23:08.345Z"
+        "at": "2026-10-31T05:05:17.296Z"
       },
       "notes": ""
     }
   },
-  "activeSlice": "S-013",
+  "activeSlice": "S-014",
   "slices": []
 }

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}News · Fantasy GM{% endblock %}
+
+{% macro stories(items, empty) %}
+{% if items %}
+<ul class="news">
+  {% for a in items %}
+  <li>
+    <a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.headline }}</a>
+    <div class="stamp">{% if a.about %}{{ a.about }} · {% endif %}ESPN · {{ a.when }}</div>
+    {% if a.description %}<p>{{ a.description }}</p>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="note">{{ empty }}</p>
+{% endif %}
+{% endmacro %}
+
+{% block content %}
+{% if news.league_failed %}
+<div class="banner" role="alert"><p>Couldn't load ESPN's news — try again in a minute.</p></div>
+{% endif %}
+
+<div class="section__head"><h2>Your players</h2></div>
+{{ stories(news.players, "Nothing about your players in the latest news.") }}
+
+<div class="section__head"><h2>Your teams</h2></div>
+{{ stories(news.teams, "Nothing about your teams in the latest news.") }}
+
+<div class="section__head"><h2>Around the league</h2></div>
+{{ stories(news.league, "Nothing around the league in the latest news.") }}
+{% endblock %}
