@@ -57,6 +57,18 @@ def _cached(name: str, loader: Callable[[], Any], ttl: int = DEFAULT_TTL):
     return df
 
 
+def data_as_of(name: str):
+    """When the cached copy of `name` was written, as naive UTC — the real age of
+    the data a caller just got, since a failed reload serves the old copy.
+    None when there is no cached copy (the data came straight from the loader)."""
+    from datetime import datetime
+
+    path = _cache_path(name)
+    if not path.exists():
+        return None
+    return datetime.utcfromtimestamp(path.stat().st_mtime)
+
+
 # ---------------------------------------------------------------------------
 # Raw loaders (Polars DataFrames)
 # ---------------------------------------------------------------------------

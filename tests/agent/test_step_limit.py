@@ -82,6 +82,11 @@ class _LoopingLLM:
 class _StubAgent(LineupGraphAgent):
     """LineupGraphAgent with the provider swapped out and prefetch disabled."""
 
+    def precheck(self, ctx):
+        # Loop behaviour is under test here, not signal freshness: the fake
+        # league has no signals, which would otherwise abstain before the loop.
+        return None
+
     def __init__(self, config, llm):
         super().__init__(config)
         self._llm = llm

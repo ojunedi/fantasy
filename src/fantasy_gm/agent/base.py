@@ -237,6 +237,10 @@ class GraphAgent(ABC):
     def thread_id(self, ctx: ToolContext) -> str:
         ...
 
+    def precheck(self, ctx: ToolContext) -> DecisionRecord | None:
+        """A record to return without running the model, or None to run it."""
+        return None
+
     @abstractmethod
     def build_record(self, ctx: ToolContext, messages: list) -> DecisionRecord:
         ...
@@ -423,6 +427,12 @@ class GraphAgent(ABC):
         non-terminal caller (the web dashboard) consumes the same stream the CLI
         does. Passing `emit` implies a traced run.
         """
+        # A run that cannot be trusted ends here, before any model is built (NFR-01).
+        early = self.precheck(ctx)
+        if early is not None:
+            if emit is not None:
+                emit({"kind": "ai_text", "text": early.memo, "display": early.memo})
+            return early
         ctx.llm_budget = self.config.max_llm_calls
         self._checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(self._checkpoint_path), check_same_thread=False)

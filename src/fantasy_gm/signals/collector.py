@@ -156,8 +156,11 @@ def _enrich_from_nflverse(
                 weeks_sampled=w3.games,
             )
             n_usage += 1
+        # Stamped with the stats file's real age: a failed reload serves the
+        # old copy, and stamping it "now" would hide that (I-01).
         bundle.availability.append(SignalAvailability(
-            name="usage_trends", available=n_usage > 0, as_of=datetime.utcnow(),
+            name="usage_trends", available=n_usage > 0,
+            as_of=nv.data_as_of(f"player_stats_{season}") or datetime.utcnow(),
             source="nflverse", note=f"{n_usage} players with usage history",
         ))
     except Exception as e:
@@ -188,7 +191,8 @@ def _enrich_from_nflverse(
             )
         bundle.vegas = team_env
         bundle.availability.append(SignalAvailability(
-            name="vegas_lines", available=len(team_env) > 0, as_of=datetime.utcnow(),
+            name="vegas_lines", available=len(team_env) > 0,
+            as_of=nv.data_as_of(f"schedules_{season}") or datetime.utcnow(),
             source="nflverse", note=f"{len(team_env)} teams with lines",
         ))
     except Exception as e:

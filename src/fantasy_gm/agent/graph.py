@@ -76,6 +76,28 @@ class LineupGraphAgent(GraphAgent):
             f"Call propose_lineup or abstain."
         )
 
+    def precheck(self, ctx: LineupToolContext) -> DecisionRecord | None:
+        """Abstain, with the evidence, when a signal the lineup depends on is stale (I-05)."""
+        from fantasy_gm.signals.freshness import assess, evidence_line
+
+        freshness = assess(ctx.signals())
+        if freshness.fresh:
+            return None
+        lines = [evidence_line(s) for s in freshness.blocking]
+        memo = "Abstained: signals too stale to trust — " + "; ".join(lines) + "."
+        record = self.build_record(ctx, [])  # the snapshot the record always carries
+        record.recommendation = {
+            "abstained": True,
+            "stale_signals": freshness.stale,
+            "missing_information": lines,
+            "what_you_would_need": "Fresh " + " and ".join(
+                s["name"] for s in freshness.blocking) + " — re-run once they load.",
+            "memo": memo,
+        }
+        record.memo = memo
+        record.confidence = 0.0
+        return record
+
     def build_record(self, ctx: LineupToolContext, messages: list) -> DecisionRecord:
         from langchain_core.messages import AIMessage
 

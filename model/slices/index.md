@@ -22,7 +22,7 @@ Thirteen slices. Three touch the interface.
 | S-007 | unread-recommendation-surfaced | A missed recommendation is recorded with what it cost | yes | | complete | unread-recommendation-surfaced |
 | S-008 | write-failure-reaches-me | I find out when both write paths failed, while there is still time to act | yes | | complete | write-failure-reaches-me |
 | S-009 | refuse-unsafe-start | The app refuses to start in a way that exposes my ESPN cookies | | | complete | refuse-unsafe-start |
-| S-010 | signals-declare-staleness | The agent declines to answer when its signals are too stale to trust | | | todo | |
+| S-010 | signals-declare-staleness | The agent declines to answer when its signals are too stale to trust | | | complete | signals-declare-staleness |
 | S-011 | brief-integrity | A brief cannot contain a number the analysis never computed | | | todo | |
 | S-012 | claim-would-clear | Waiver recommendations account for whether the claim would actually clear | | S-006 | todo | |
 | S-013 | fantasypros-projections | Projections come from FantasyPros rather than ESPN | | | todo | |
