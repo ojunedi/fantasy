@@ -1,0 +1,19 @@
+{# An earlier week's filed claim waiting on its result. #}
+<div class="panel" id="claim-{{ c.decision_id }}">
+  <p class="note">Week {{ c.week }} claim — add {{ c.candidate }}, drop {{ c.displaced_player }}.</p>
+  {% if notice %}
+  {% if notice.kind == "pending" %}<p class="note">{{ notice.message }}</p>
+  {% else %}<div class="banner" role="alert"><p>{{ notice.message }}</p></div>{% endif %}
+  {% endif %}
+  {% if c.result %}
+  {% with r = c.result, candidate = c.candidate, displaced = c.displaced_player %}
+  {% include "partials/claim_result_text.html" %}
+  {% endwith %}
+  {% else %}
+  <form hx-post="/api/waiver/result" hx-target="#claim-{{ c.decision_id }}" hx-swap="outerHTML"
+        hx-disabled-elt="find button">
+    <input type="hidden" name="decision_id" value="{{ c.decision_id }}">
+    <div class="btn-row"><button class="btn" type="submit">Check result</button></div>
+  </form>
+  {% endif %}
+</div>

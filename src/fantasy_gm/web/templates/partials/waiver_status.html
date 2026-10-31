@@ -90,6 +90,8 @@
   {% if notice %}
   {% if notice.kind == "dry_run" %}
   <div class="panel"><p><span class="tag tag--quiet">Dry run</span> {{ notice.message }}</p></div>
+  {% elif notice.kind == "pending" %}
+  <p class="note">{{ notice.message }}</p>
   {% elif notice.kind == "roster_changed" %}
   <div class="banner" role="alert">
     <p>{{ notice.message }}</p>
@@ -105,13 +107,27 @@
 
   {% if waiver.human_response != "approved" %}
   <p>You passed on the waiver wire this week.</p>
-  {% elif f and f.state == "confirmed" %}
+  {% elif waiver.result %}
+  <div class="panel">
+    {% with r = waiver.result, candidate = waiver.candidate, displaced = waiver.displaced_player %}
+    {% include "partials/claim_result_text.html" %}
+    {% endwith %}
+  </div>
+  {% elif f and f.state in ("confirmed", "unconfirmed") %}
+  {% if f.state == "confirmed" %}
   <div class="panel">
     <p><span class="tag tag--chyron">Filed</span> Claim filed — ESPN shows it as pending.
       {% if f.waiver_rank %}You are {{ f.waiver_rank }} of {{ f.team_count }} in waiver priority.{% endif %}</p>
   </div>
-  {% elif f and f.state in ("unconfirmed", "sending") %}
-  <div class="banner banner--warn" role="alert"><p>{{ f.message or "A filing was started but its result was not recorded. Check the ESPN app before doing anything — don't file again." }}</p></div>
+  {% else %}
+  <div class="banner banner--warn" role="alert"><p>{{ f.message }}</p></div>
+  {% endif %}
+  <form hx-post="/api/waiver/result" hx-target="#waiver-status" hx-swap="outerHTML"
+        hx-disabled-elt="find button">
+    <div class="btn-row"><button class="btn" type="submit">Check result</button></div>
+  </form>
+  {% elif f and f.state == "sending" %}
+  <div class="banner banner--warn" role="alert"><p>A filing was started but its result was not recorded. Check the ESPN app before doing anything — don't file again.</p></div>
   {% elif waiver.can_file %}
   {% if f and f.state == "failed" and not notice %}
   <div class="banner" role="alert">

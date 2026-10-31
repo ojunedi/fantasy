@@ -31,8 +31,19 @@ def _adapter(tmp_path):
 def test_pending_waiver_claims_keeps_only_pending_waivers_and_bypasses_the_cache(tmp_path):
     adapter = _adapter(tmp_path)
     with patch.object(ESPNAdapter, "_fetch", return_value=TRANSACTIONS) as fetch:
-        claims = adapter.get_pending_waiver_claims(2026)
+        claims = adapter.get_pending_waiver_claims(2026, 1)
     assert claims == [PENDING_CLAIM]
+    assert fetch.call_args.kwargs["bypass_cache"] is True
+    # unscoped, ESPN returns only the current week's transactions
+    assert fetch.call_args.kwargs["params"]["scoringPeriodId"] == 1
+
+
+def test_waiver_transactions_read_the_claims_own_week_every_status(tmp_path):
+    adapter = _adapter(tmp_path)
+    with patch.object(ESPNAdapter, "_fetch", return_value=TRANSACTIONS) as fetch:
+        txns = adapter.get_waiver_transactions(2026, 4)
+    assert [t["status"] for t in txns] == ["PENDING", "EXECUTED"]
+    assert fetch.call_args.kwargs["params"]["scoringPeriodId"] == 4
     assert fetch.call_args.kwargs["bypass_cache"] is True
 
 

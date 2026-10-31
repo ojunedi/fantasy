@@ -60,7 +60,13 @@ def espn(app, fake_adapter, monkeypatch):
 
     fake_adapter.get_roster = get_roster
     fake_adapter.get_free_agents = get_free_agents
-    fake_adapter.get_pending_waiver_claims = lambda season: list(state.pending)
+    state.readback_weeks = []
+
+    def get_pending_waiver_claims(season, week):
+        state.readback_weeks.append(week)
+        return list(state.pending)
+
+    fake_adapter.get_pending_waiver_claims = get_pending_waiver_claims
     fake_adapter.get_waiver_rank = lambda team_id, season: (9, 12)
 
     def post(url, json=None, **kwargs):
@@ -182,6 +188,7 @@ def test_wadd15_a_claim_found_pending_on_read_back_is_confirmed(client, store, e
     # WADD-15 THEN the page reports the claim filed and pending, with my waiver priority position
     assert "Claim filed — ESPN shows it as pending." in resp.text
     assert "You are 9 of 12 in waiver priority." in resp.text
+    assert espn.readback_weeks == [WEEK]  # the read-back asks for the claim's own week
     # WADD-15 AND the decision log records the transaction, the state confirmed, and the priority position
     filing = store.get(record.id).outcome["filing"]
     assert filing["state"] == "confirmed"

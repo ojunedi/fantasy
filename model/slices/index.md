@@ -18,7 +18,7 @@ Thirteen slices. Three touch the interface.
 | S-003 | waiver-add-worth-making | The agent tells me whether there is a waiver add worth making, and if so which | yes | | complete | waiver-add-worth-making |
 | S-004 | one-approval-gate | There is one approval gate, not two that can silently disagree | | | complete | one-approval-gate |
 | S-005 | waiver-claim-filed | An approved claim is filed through the API and confirmed, not typed by hand | yes | S-003,S-004 | complete | waiver-claim-filed |
-| S-006 | claim-outcome-recorded | I find out whether my claim cleared or lost to priority | | S-005 | todo | |
+| S-006 | claim-outcome-recorded | I find out whether my claim cleared or lost to priority | yes | S-005 | complete | claim-outcome-recorded |
 | S-007 | unread-recommendation-surfaced | A missed recommendation is recorded with what it cost | | | todo | |
 | S-008 | write-failure-reaches-me | I find out when both write paths failed, while there is still time to act | yes | | todo | |
 | S-009 | refuse-unsafe-start | The app refuses to start in a way that exposes my ESPN cookies | | | todo | |

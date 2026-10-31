@@ -151,7 +151,7 @@ class ESPNWaiverApiExecutor:
         never assumed good.
         """
         try:
-            pending = self.adapter.get_pending_waiver_claims(plan.season)
+            pending = self.adapter.get_pending_waiver_claims(plan.season, plan.week)
         except Exception:
             return False
         want = {("ADD", plan.add_id), ("DROP", plan.drop_id)}
@@ -164,3 +164,67 @@ class ESPNWaiverApiExecutor:
             if got == want:
                 return True
         return False
+
+
+# ---------------------------------------------------------------------------
+# A filed claim's fate
+# ---------------------------------------------------------------------------
+
+# The player had left the pool when our claim ran — someone ahead of us in
+# priority took him. Only a loss to priority if their claim is found too.
+_LEFT_POOL = "FAILED_INVALIDPLAYERSOURCE"
+
+
+@dataclass
+class ClaimResult:
+    state: str                    # cleared | lost | failed | cancelled
+    reason: str | None = None     # ESPN's status, for failed
+    winner_team_id: str | None = None
+
+
+def _items(txn: dict) -> set[tuple[str, str]]:
+    return {(str(i.get("type")), str(i.get("playerId"))) for i in txn.get("items", [])}
+
+
+def resolve_claim(transactions: list[dict], filing: dict, team_id: str,
+                  week: int) -> ClaimResult | None:
+    """Read a filed claim's fate off the league's waiver transactions (I-23).
+
+    None means unresolved — still pending, or not found — and nothing should be
+    recorded: an absence is not an outcome.
+    """
+    items = (filing.get("transaction") or {}).get("items", [])
+    want = {(str(i.get("type")), str(i.get("playerId"))) for i in items}
+    add_id = next((pid for kind, pid in want if kind == "ADD"), None)
+    if not want or add_id is None:
+        return None
+
+    mine = [t for t in transactions
+            if str(t.get("teamId")) == str(team_id)
+            and t.get("scoringPeriodId") == week
+            and _items(t) == want]
+    statuses = [str(t.get("status", "")).upper() for t in mine]
+
+    if "EXECUTED" in statuses:
+        return ClaimResult("cleared")
+    # A copy still pending decides nothing yet — a cancelled or failed duplicate
+    # (an app-filed copy, say) must not settle a claim that may still clear.
+    if "PENDING" in statuses:
+        return None
+    failures = [st for st in statuses if st.startswith("FAILED")]
+    if failures:
+        if _LEFT_POOL in failures:
+            winner = next(
+                (t for t in transactions
+                 if str(t.get("teamId")) != str(team_id)
+                 and str(t.get("status", "")).upper() == "EXECUTED"
+                 and t.get("scoringPeriodId") == week
+                 and ("ADD", add_id) in _items(t)),
+                None)
+            if winner is not None:
+                return ClaimResult("lost", reason=_LEFT_POOL,
+                                   winner_team_id=str(winner.get("teamId")))
+        return ClaimResult("failed", reason=failures[0])
+    if any(st in ("CANCELED", "CANCELLED") for st in statuses):
+        return ClaimResult("cancelled")
+    return None

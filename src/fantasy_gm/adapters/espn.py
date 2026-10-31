@@ -592,20 +592,33 @@ class ESPNAdapter(FantasyPlatform):
             ))
         return txns
 
-    def get_pending_waiver_claims(self, season: int) -> list[dict]:
+    def get_pending_waiver_claims(self, season: int, week: int) -> list[dict]:
         """Raw pending WAIVER transactions, cache bypassed.
 
         Same reasoning as get_pending_trade_proposals: this confirms a claim was
         filed, so it reads ESPN's own shape (items carry from/to team ids) and
         never trusts a cached read. A filed claim reads back `PENDING` until the
-        waiver window processes it.
+        waiver window processes it. Scoped to the claim's week: without
+        `scoringPeriodId` ESPN returns only the current week's transactions.
         """
-        data = self._fetch(season, params={"view": "mTransactions2"}, bypass_cache=True)
+        data = self._fetch(season, params={"view": "mTransactions2", "scoringPeriodId": week},
+                           bypass_cache=True)
         return [
             t for t in data.get("transactions", [])
             if t.get("type") == "WAIVER"
             and str(t.get("status", "")).upper() == "PENDING"
         ]
+
+    def get_waiver_transactions(self, season: int, week: int) -> list[dict]:
+        """Every WAIVER transaction for one week, whatever its status, cache bypassed.
+
+        Used to learn a filed claim's fate: EXECUTED, FAILED_* (with the reason
+        in the status), CANCELED or still PENDING. Scoped to the claim's week:
+        without `scoringPeriodId` ESPN returns only the current week's.
+        """
+        data = self._fetch(season, params={"view": "mTransactions2", "scoringPeriodId": week},
+                           bypass_cache=True)
+        return [t for t in data.get("transactions", []) if t.get("type") == "WAIVER"]
 
     def get_waiver_rank(self, team_id: str, season: int) -> tuple[int | None, int]:
         """(our position in the waiver order, number of teams), read fresh.

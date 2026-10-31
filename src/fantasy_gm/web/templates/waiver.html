@@ -6,6 +6,11 @@
   <h2>Waiver Wire — Week {{ week }}</h2>
 </div>
 
+{% for c in earlier_claims %}
+{% set notice = None %}
+{% include "partials/claim_check.html" %}
+{% endfor %}
+
 {# The status partial polls itself while a scan runs; every action swaps it whole. #}
 <div id="waiver-area">
   {% include "partials/waiver_status.html" %}

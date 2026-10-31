@@ -2,7 +2,7 @@
   "version": 2,
   "project": "Fantasy GM",
   "createdAt": "2026-09-30T15:15:25.613Z",
-  "updatedAt": "2026-10-31T01:50:39.817Z",
+  "updatedAt": "2026-10-31T02:05:41.540Z",
   "schema": "frictionless-discovery",
   "track": "delivery",
   "stage": "feature-slices",
@@ -81,6 +81,6 @@
       "notes": ""
     }
   },
-  "activeSlice": "S-005",
+  "activeSlice": "S-006",
   "slices": []
 }

@@ -1,0 +1,12 @@
+{# A recorded claim result in words. Expects r, candidate, displaced. #}
+{% if r.state == "cleared" %}
+<p><span class="tag tag--chyron">Cleared</span> Claim cleared — {{ candidate }} is on your roster and {{ displaced }} was dropped.
+  {% if r.waiver_rank %}Filed {{ r.waiver_rank }} of {{ r.team_count }} in priority.{% endif %}</p>
+{% elif r.state == "lost" %}
+<p><span class="tag tag--quiet">Lost</span> Claim lost to priority — {{ r.winner_name }} got {{ candidate }}.
+  {% if r.waiver_rank %}You were {{ r.waiver_rank }} of {{ r.team_count }}.{% else %}Your waiver position wasn't recorded when the claim was filed.{% endif %}</p>
+{% elif r.state == "failed" %}
+<p><span class="tag tag--quiet">Failed</span> Claim failed — {{ failure_words(r.reason) }}. This wasn't a priority loss.</p>
+{% else %}
+<p><span class="tag tag--quiet">Cancelled</span> Claim was cancelled in ESPN.</p>
+{% endif %}

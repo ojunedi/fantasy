@@ -1021,6 +1021,7 @@ def waiver_view(record: "DecisionRecord | None", active_run: "Any | None") -> di
             "created_at": record.created_at,
             "decision_id": str(record.id),
             "filing": filing,
+            "result": (record.outcome or {}).get("result"),
             # A live filing that reached ESPN is never offered again.
             "can_file": (human_response == "approved"
                          and (filing is None or filing.get("state") == "failed")),
@@ -1063,6 +1064,30 @@ def waiver_view(record: "DecisionRecord | None", active_run: "Any | None") -> di
         return {"state": "brief_rejected"}
 
     return {"state": "no_scan"}
+
+
+_CLAIM_FAILURE_WORDS = {
+    "FAILED_PLAYERALREADYDROPPED": "the player you were dropping was no longer on your roster",
+    "FAILED_INVALIDPLAYERSOURCE": "the player was no longer available",
+}
+
+
+def claim_failure_words(reason: str | None) -> str:
+    """ESPN's failure status in words; an unknown one is shown as ESPN sent it."""
+    return _CLAIM_FAILURE_WORDS.get(reason or "", reason or "no reason given")
+
+
+def claim_check_view(record: "DecisionRecord") -> dict:
+    """An earlier week's filed claim, for its own Check result panel."""
+    rec = record.recommendation or {}
+    outcome = record.outcome or {}
+    return {
+        "decision_id": str(record.id),
+        "week": record.week,
+        "candidate": rec.get("candidate"),
+        "displaced_player": rec.get("displaced_player"),
+        "result": outcome.get("result"),
+    }
 
 
 def trade_send_plan_view(plan) -> dict:

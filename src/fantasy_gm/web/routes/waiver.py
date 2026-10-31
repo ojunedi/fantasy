@@ -5,10 +5,11 @@ POST /api/waiver/scan     — trigger a waiver scan run
 GET  /api/waiver/status   — htmx polling partial (every 5 s)
 POST /api/waiver/decide   — record APPROVED or DECLINED, redirect to /waiver
 POST /api/waiver/file     — file the approved claim with ESPN (dry run unless LIVE)
+POST /api/waiver/result   — read back whether a filed claim cleared or lost
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from fantasy_gm.db.store import DecisionStore
@@ -52,6 +53,8 @@ def waiver_page(request: Request,
         "week": week,
         "season": season,
         "waiver": context.waiver_view(record, active_run),
+        "earlier_claims": [context.claim_check_view(r)
+                           for r in _earlier_unresolved(store, season, week)],
     })
 
 
@@ -66,6 +69,13 @@ def start_scan(request: Request,
     if runs.get_active("waiver", week, season):
         # Already running — return the status partial
         return _status_partial(request, week, season, settings, store)
+    if _filed_this_week(store, week, season):
+        # A new scan would put a newer decision in front of the filed claim.
+        return _status_partial(request, week, season, settings, store,
+                               notice={"kind": "refused", "message":
+                                       "This week's claim is already filed — a new scan "
+                                       "would hide it, so none was started."},
+                               status_code=409)
 
     run = runs.create(kind="waiver", week=week, season=season,
                       team_id=settings.team_id, supervised=False)
@@ -190,9 +200,125 @@ def file_claim(request: Request,
     return _status_partial(request, week, season, settings, store)
 
 
+@router.post("/api/waiver/result", response_class=HTMLResponse)
+def check_result(request: Request,
+                 decision_id: str = Form(default=""),
+                 settings: WebSettings = Depends(get_settings),
+                 store: DecisionStore = Depends(get_store),
+                 executor=Depends(get_waiver_executor)) -> HTMLResponse:
+    """Read a filed claim's fate back from the league and record it (I-23).
+
+    With no `decision_id`, the claim filed this week; with one, an earlier
+    week's claim listed on the page. Either way the league is read for the
+    week the claim was filed in, and a result is recorded once and never read
+    again. Still pending, or not found, records nothing.
+    """
+    week = _week(request, settings)
+    season = settings.season
+
+    if decision_id:
+        record = _earlier_filed(store, decision_id, season)
+        if record is None:
+            raise HTTPException(status_code=404, detail="No such filed claim")
+        notice = _resolve(record, executor, settings, store)
+        return request.app.state.templates.TemplateResponse(
+            request, "partials/claim_check.html",
+            {"c": context.claim_check_view(store.get(record.id)), "notice": notice},
+            status_code=409 if notice and notice["kind"] == "refused" else 200,
+        )
+
+    record = _filed_record(store, week, season)
+    if record is None:
+        return _status_partial(request, week, season, settings, store,
+                               notice={"kind": "refused", "message":
+                                       "No claim was filed this week, so there is no result to check."},
+                               status_code=409)
+    notice = _resolve(record, executor, settings, store)
+    return _status_partial(request, week, season, settings, store, notice=notice,
+                           status_code=409 if notice and notice["kind"] == "refused" else 200)
+
+
+def _resolve(record, executor, settings: WebSettings, store: DecisionStore) -> dict | None:
+    """Record a filed claim's result if the league shows one. Returns a notice, or None."""
+    from datetime import datetime, timezone
+
+    from fantasy_gm.execute.waiver_api import resolve_claim
+
+    outcome = record.outcome or {}
+    if outcome.get("result"):
+        return None  # recorded once; never read again
+    filing = outcome["filing"]
+    claim_week = (filing.get("transaction") or {}).get("scoringPeriodId") or record.week
+    try:
+        transactions = executor.adapter.get_waiver_transactions(record.season, claim_week)
+    except Exception:
+        return {"kind": "refused", "message": "Couldn't read the league — try again in a moment."}
+    found = resolve_claim(transactions, filing, settings.team_id, claim_week)
+    if found is None:
+        return {"kind": "pending", "message": "ESPN hasn't processed the claim yet — check "
+                                              "again after the waiver window runs."}
+
+    winner_name = None
+    if found.winner_team_id:
+        try:
+            names = {s.team_id: s.team_name for s in executor.adapter.get_standings(record.season)}
+            winner_name = names.get(found.winner_team_id)
+        except Exception:
+            pass
+    store.record_outcome(record.id, {**outcome, "result": {
+        "state": found.state,
+        "reason": found.reason,
+        "winner_team_id": found.winner_team_id,
+        "winner_name": winner_name or (f"Team {found.winner_team_id}"
+                                       if found.winner_team_id else None),
+        "waiver_rank": filing.get("waiver_rank"),
+        "team_count": filing.get("team_count"),
+        "recorded_at": datetime.now(tz=timezone.utc).isoformat(),
+    }})
+    store.backup_if_dirty()
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _is_unresolved_filing(r) -> bool:
+    outcome = r.outcome or {}
+    return (r.decision_type == DecisionType.WAIVER
+            and (outcome.get("filing") or {}).get("state") in ("confirmed", "unconfirmed")
+            and not outcome.get("result"))
+
+
+def _earlier_unresolved(store: DecisionStore, season: int, week: int) -> list:
+    """Filed claims from earlier weeks still waiting on a result, oldest first."""
+    return sorted((r for r in store.list_recent(limit=500)
+                   if r.season == season and r.week < week and _is_unresolved_filing(r)),
+                  key=lambda r: r.week)
+
+
+def _earlier_filed(store: DecisionStore, decision_id: str, season: int):
+    from uuid import UUID
+    try:
+        record = store.get(UUID(decision_id))
+    except ValueError:
+        return None
+    if record is None or record.season != season:
+        return None
+    filing = ((record.outcome or {}).get("filing") or {})
+    if record.decision_type != DecisionType.WAIVER or filing.get("state") not in ("confirmed", "unconfirmed"):
+        return None
+    return record
+
+
+def _filed_record(store: DecisionStore, week: int, season: int):
+    """The waiver decision this week whose claim reached ESPN, newest first."""
+    for r in reversed(store.list_week(week, season)):
+        state = ((r.outcome or {}).get("filing") or {}).get("state")
+        if r.decision_type == DecisionType.WAIVER and state in ("confirmed", "unconfirmed"):
+            return r
+    return None
+
 
 def _status_partial(request: Request, week: int, season: int,
                     settings: WebSettings, store: DecisionStore,

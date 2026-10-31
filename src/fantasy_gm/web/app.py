@@ -23,6 +23,8 @@ def create_templates(settings: WebSettings) -> Jinja2Templates:
     templates.env.lstrip_blocks = True
     from fantasy_gm.web import filters
     templates.env.filters.update(filters.FILTERS)
+    from fantasy_gm.web.context import claim_failure_words
+    templates.env.globals["failure_words"] = claim_failure_words
     return templates
 
 
