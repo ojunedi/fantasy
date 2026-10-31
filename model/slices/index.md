@@ -5,7 +5,7 @@ stage: feature-slices
 
 # Feature Slices
 
-Thirteen slices. Three touch the interface.
+Fifteen slices. Five touch the interface; the last two are a research surface added after the first thirteen shipped.
 
 **The walking skeleton spans two slices, and that is a compromise worth naming.** A skeleton should walk through every layer, and the waiver capability's layers end at a write to ESPN. Splitting scoring from filing means neither slice alone proves the whole path. The October window forced it: the scoring half is what can realistically ship inside the waiver season, and the filing half is where the write risk lives. They should be built back to back.
 
@@ -26,6 +26,8 @@ Thirteen slices. Three touch the interface.
 | S-011 | brief-integrity | A brief cannot contain a number the analysis never computed | | | complete | brief-integrity |
 | S-012 | claim-would-clear | Waiver recommendations account for whether the claim would actually clear | | S-006 | blocked | |
 | S-013 | fantasypros-projections | Projections come from FantasyPros rather than ESPN | | | complete | fantasypros-projections |
+| S-014 | news-feed | I can read the latest news on my players and their teams | yes | | todo | |
+| S-015 | player-card | Any player's name opens a card with his photo, season stats and recent news | yes | S-014 | todo | |
 
 ## Sequence
 
@@ -44,6 +46,8 @@ Thirteen slices. Three touch the interface.
 | 11 | S-011 | Enforces the guarantee the whole design exists for. Last of the risk-retiring slices because the failure is a wrong number in prose the manager reads before acting, rather than a wrong action |
 | 12 | S-012 | **Conditional, not merely late.** S-006 produces the evidence for whether lost claims are frequent enough to justify modelling priority at all. Building it first would be solving a problem by assumption |
 | 13 | S-013 | **Sequenced by convenience, not risk.** An accuracy upgrade with no deadline and a working fallback. The architecture requirement — that the projection source stays pluggable — is already met, so this is the swap itself whenever it is wanted |
+| 14 | S-014 | Added by the manager after the risk-retiring slices shipped. A research surface, not a decision: reads ESPN's news feed, writes nothing |
+| 15 | S-015 | Builds on the news feed so a card can show a player's recent headlines. Reads nflverse season stats and ESPN's player photos; writes nothing |
 
 <!--
 Two positions declare themselves as sequenced by something other than risk, and

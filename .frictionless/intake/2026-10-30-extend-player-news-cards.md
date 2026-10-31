@@ -2,7 +2,7 @@
 date: 2026-10-30
 type: extend
 confidence: firsthand
-relevantTo: event-storm, domain-design, target-arch, feature-slices
+relevantTo: feature-slices
 ---
 
 ## Verbatim input
@@ -20,3 +20,11 @@ The manager wants three related things in one feature area:
 3. **Player photos** — each card shows the player's headshot image, requiring an external image source (ESPN CDN, Sleeper, or similar sports data provider).
 
 The key distinction from what exists: the current model treats news as one signal among many fed into the analysis engine. This request adds a *browsing mode* — the manager is doing research, not receiving a recommendation. That is a new interaction pattern in the system.
+
+## Where it enters
+
+At the slicing stage. Everything here reads and displays data the system
+already gathers — ESPN's news feed, nflverse season stats — plus ESPN's public
+player photos keyed by ids it already holds. No new decision, write, rule or
+aggregate, so the event storm, domain design and architecture stand as they
+are. Two planned slices: the news feed, and the player card.

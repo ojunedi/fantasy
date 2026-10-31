@@ -2,7 +2,7 @@
   "version": 2,
   "project": "Fantasy GM",
   "createdAt": "2026-09-30T15:15:25.613Z",
-  "updatedAt": "2026-10-31T04:19:25.932Z",
+  "updatedAt": "2026-10-31T05:04:05.558Z",
   "schema": "frictionless-discovery",
   "track": "delivery",
   "stage": "feature-slices",
@@ -71,7 +71,7 @@
       "notes": ""
     },
     "feature-slices": {
-      "status": "complete",
+      "status": "in-progress",
       "artifacts": [],
       "gate": {
         "name": "slices-ready",
