@@ -42,6 +42,10 @@ def create_app(settings: WebSettings | None = None) -> FastAPI:
     app.state.runs = RunManager()
     app.state.templates = create_templates(settings)
 
+    # Serve this machine only, whatever host uvicorn was told to bind (NFR-11).
+    from fantasy_gm.web.local_only import LocalOnly
+    app.add_middleware(LocalOnly, extra_names=settings.extra_local_names)
+
     app.mount("/static", StaticFiles(directory=str(settings.static_dir)), name="static")
 
     from fantasy_gm.web.routes import approve, nudge, pages, partials, runs_routes, trades, waiver

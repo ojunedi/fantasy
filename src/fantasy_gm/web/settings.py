@@ -27,6 +27,9 @@ class WebSettings:
     db_path: Path | None = None
     cache_dir: Path | None = None
     read_ttl_seconds: float = 60.0     # in-process memo; far below the 1h disk cache
+    # Names besides the loopback ones that count as this machine. Empty in use;
+    # the test suite adds Starlette's "testserver".
+    extra_local_names: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         self.repo_root = Path(self.repo_root)

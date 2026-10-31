@@ -280,6 +280,7 @@ def web_settings(tmp_path) -> WebSettings:
         league_id="1660218687", team_id="8", season=2026, week=3,
         db_path=tmp_path / "decisions.db",
         cache_dir=tmp_path / "cache",
+        extra_local_names=("testserver",),  # Starlette's TestClient host
     )
 
 
