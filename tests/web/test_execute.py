@@ -204,3 +204,60 @@ def test_gate_two_is_reachable_from_the_decision_page(client, approved, fake_exe
     assert "Plan the lineup change" in page
     plan = client.post(f"/decisions/{approved.id}/plan").text
     assert "Type LIVE" in plan
+
+
+# ------------------------------------------------- the shared approval gate
+
+def test_appgate07_web_write_step_refuses_an_unapproved_decision(client, store, fake_executor):
+    record = _record()
+    store.save(record)  # pending: no human response
+
+    resp = client.post(f"/decisions/{record.id}/execute", data={
+        "confirm": "LIVE", "approved": "1", "human_response": "approved",
+    })
+
+    # APPGATE-07 THEN the response is a refusal with status 409
+    assert resp.status_code == 409
+    assert "Nothing was sent" in resp.text
+    # APPGATE-07 AND the executor is not called
+    assert fake_executor.calls == []
+    assert fake_executor.plan_calls == []
+    # APPGATE-07 AND the decision's state in the decision log is unchanged
+    assert store.get(record.id).human_response is None
+
+
+def test_appgate06_a_live_execution_does_not_authorise_the_next_one(client, store, approved,
+                                                                   fake_executor):
+    _execute(client, approved, "LIVE")
+    second = _execute(client, approved, "")
+
+    # APPGATE-06 THEN the second execution is a Dry run
+    assert fake_executor.calls == [True, False]
+    assert "Dry run" in second.text
+    # APPGATE-06 AND the decision log holds no record of the earlier authorisation
+    stored = store.get(approved.id)
+    assert stored.human_response == HumanResponse.APPROVED
+    assert "LIVE" not in str(stored.model_dump())
+
+
+@pytest.mark.parametrize("decision_type", [DecisionType.TRADE, DecisionType.WAIVER])
+def test_appgate10_web_write_step_refuses_an_approved_decision_that_is_not_a_lineup(
+        client, store, fake_executor, decision_type):
+    record = _record(decision_type=decision_type, recommendation={"trades": []})
+    store.save(record)
+    store.record_human_response(record.id, HumanResponse.APPROVED)
+
+    resp = _execute(client, record, "LIVE")
+
+    # APPGATE-10 THEN the response is a refusal with status 409
+    assert resp.status_code == 409
+    assert "not a lineup" in resp.text
+    # APPGATE-10 AND no lineup is planned or written
+    assert fake_executor.plan_calls == []
+    assert fake_executor.calls == []
+
+
+def test_refusals_and_validation_errors_reach_the_page(client):
+    # htmx drops 4xx bodies unless told otherwise; 409 and 422 must swap.
+    page = client.get("/history").text
+    assert '"code":"4(09|22)","swap":true' in page

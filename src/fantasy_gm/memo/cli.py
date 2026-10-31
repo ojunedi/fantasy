@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from fantasy_gm.db.store import DecisionStore
 from fantasy_gm.execute.base import Executor
+from fantasy_gm.execute.gate import authorise
 from fantasy_gm.execute.trade_plan import TradeOfferExecutor
 from fantasy_gm.models import DecisionRecord, DecisionType, HumanResponse
 
@@ -46,9 +47,12 @@ def _execute_approved_lineup(
     if plan.is_noop:
         return
 
-    go_live = input("\n  Execute for REAL now? Type 'LIVE' to write, anything else = dry run: ").strip()
-    live = go_live == "LIVE"
-    result = executor.execute(plan, live=live)
+    go_live = input("\n  Execute for REAL now? Type 'LIVE' to write, anything else = dry run: ")
+    auth = authorise(record, go_live)
+    if auth.refused:
+        print(f"\n  ✗ {auth.message}")
+        return
+    result = executor.execute(plan, live=auth.live)
 
     if result.success:
         prefix = "✓ EXECUTED" if not result.dry_run else "✓ DRY RUN"
@@ -235,8 +239,12 @@ def _send_approved_trade(record, trades, trade_executor, team_id, store) -> None
         print("  Cannot send this package — see notes above.")
         return
 
-    go_live = input("\n  Send this offer for REAL? Type 'LIVE' to send, anything else = dry run: ").strip()
-    result = trade_executor.execute(plan, season=record.season, live=(go_live == "LIVE"))
+    go_live = input("\n  Send this offer for REAL? Type 'LIVE' to send, anything else = dry run: ")
+    auth = authorise(record, go_live)
+    if auth.refused:
+        print(f"\n  ✗ {auth.message}")
+        return
+    result = trade_executor.execute(plan, season=record.season, live=auth.live)
 
     if not result.success:
         print(f"\n  ✗ Send failed: {result.error}")

@@ -16,7 +16,8 @@ from fastapi.responses import HTMLResponse
 from fantasy_gm.adapters.espn import ESPNAdapter
 from fantasy_gm.db.store import DecisionStore
 from fantasy_gm.execute.base import Executor
-from fantasy_gm.models import HumanResponse
+from fantasy_gm.execute.gate import Authorisation, Verdict, authorise
+from fantasy_gm.models import DecisionType, HumanResponse
 from fantasy_gm.web import context, reads
 from fantasy_gm.web.deps import (
     ReadCache,
@@ -154,21 +155,34 @@ def execute(decision_id: str, request: Request,
             settings: WebSettings = Depends(get_settings),
             store: DecisionStore = Depends(get_store),
             executor: Executor = Depends(get_executor)) -> HTMLResponse:
-    """Gate 2. `confirm` must equal the literal `LIVE`, case-sensitive.
+    """Gate 2, decided by the shared approval gate (`execute/gate.py`).
 
-    Anything else — including empty, whitespace, "live", or "LIVE " — is a dry
-    run, and is labelled as one rather than treated as an error. Getting this
-    comparison wrong is the only way this application can do real damage, so it
-    is exact-match and nothing else.
+    The decision is read from the decision log, never from the request, so no
+    form field can approve it (NFR-11). An unapproved decision, or an override
+    with no written reason, is refused with 409 and the executor is never
+    called. Otherwise `confirm` must be exactly `LIVE` for a real write; any
+    other value is a dry run, labelled as one.
 
     The plan is recomputed here from the stored record: the browser never gets
     to hand us a set of moves or a request payload.
     """
     record = load_decision(store, decision_id)
-    plan = _build_plan(executor, record, settings.team_id)
+    auth = authorise(record, confirm)
+    if not auth.refused and not _is_writable_lineup(record):
+        # This step writes lineups. An approved trade or waiver decision would
+        # plan an empty starter list — every player benched — so it never runs.
+        auth = Authorisation(Verdict.REFUSED, "NOT_A_LINEUP",
+                             "This decision is not a lineup with starters — nothing was sent.")
+    if auth.refused:
+        return request.app.state.templates.TemplateResponse(
+            request, "partials/execution_result.html",
+            {"result": {"refused": True, "message": auth.message},
+             "decision_id": decision_id},
+            status_code=409,
+        )
 
-    live = confirm == "LIVE"
-    result = executor.execute(plan, live=live)
+    plan = _build_plan(executor, record, settings.team_id)
+    result = executor.execute(plan, live=auth.live)
 
     return request.app.state.templates.TemplateResponse(
         request, "partials/execution_result.html",
@@ -185,3 +199,11 @@ def plan_only(decision_id: str, request: Request,
     record = load_decision(store, decision_id)
     plan = _build_plan(executor, record, settings.team_id)
     return _render_plan(request, plan, executor, decision_id)
+
+
+def _is_writable_lineup(record) -> bool:
+    """A lineup decision whose approved starters are not empty."""
+    if record.decision_type != DecisionType.LINEUP:
+        return False
+    rec = record.modified_recommendation or record.recommendation or {}
+    return bool(rec.get("starter_player_ids"))
