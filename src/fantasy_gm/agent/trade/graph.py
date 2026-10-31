@@ -216,9 +216,9 @@ class TradeGraphAgent(GraphAgent):
                         f"well enough to recommend.")
                 confidence = 0.0
         elif terminal_tool == "propose_trades" and terminal_result:
-            recommendation = terminal_result
-            memo = terminal_result.get("memo", "")
-            trades = terminal_result.get("trades", [])
+            recommendation = _screen_trade_texts(terminal_result, ctx)
+            memo = recommendation.get("memo", "")
+            trades = recommendation.get("trades", [])
             confidence = (
                 max((float(t.get("confidence", 0.0)) for t in trades), default=0.0)
                 if trades else 0.0
@@ -291,3 +291,41 @@ class TradeGraphAgent(GraphAgent):
             signals_staleness={},
             recommendation=recommendation, memo=memo, confidence=confidence,
         )
+
+
+_TRADE_TEXT_FIELDS = ("rationale", "counterparty_pitch")
+
+
+def _screen_trade_texts(result: dict, ctx) -> dict:
+    """Withhold any rationale, pitch or memo quoting a number the analysis never
+    computed (I-27). The counterparty pitch is the real exposure: persuasive
+    text aimed at another manager. Each text is screened alone; packages never change."""
+    from fantasy_gm.memo.integrity import screen, traceable
+
+    def numbers_only(trade: dict) -> dict:
+        return {k: v for k, v in trade.items() if k not in _TRADE_TEXT_FIELDS}
+
+    trades = [dict(t) for t in result.get("trades", [])]
+    allowed = traceable(ctx.call_log, ctx.week, ctx.season,
+                        [numbers_only(t) for t in trades],
+                        [round(float(t.get("confidence", 0)) * 100, 2) for t in trades])
+    out = {**result, "trades": trades}
+    withheld: dict = {}
+    for i, trade in enumerate(trades):
+        for field in _TRADE_TEXT_FIELDS:
+            text = trade.get(field)
+            if not text:
+                continue
+            kind = "Pitch" if field == "counterparty_pitch" else "Rationale"
+            shown, bad = screen(str(text), allowed, kind=kind)
+            if bad:
+                withheld.setdefault(str(i), {})[field] = {"original": text, "untraced": bad}
+                trade[field] = shown
+    if out.get("memo"):
+        shown, bad = screen(str(out["memo"]), allowed)
+        if bad:
+            withheld["memo"] = {"original": out["memo"], "untraced": bad}
+            out["memo"] = shown
+    if withheld:
+        out["withheld"] = withheld
+    return out

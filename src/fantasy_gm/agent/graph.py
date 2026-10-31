@@ -121,9 +121,28 @@ class LineupGraphAgent(GraphAgent):
         }
 
         if terminal_tool == "propose_lineup" and terminal_result:
-            recommendation = terminal_result
-            memo = terminal_result.get("memo", "")
+            recommendation = dict(terminal_result)
             confidence = float(terminal_result.get("confidence", 0.0))
+            # Every number in the brief must come from this run's analysis (I-25).
+            from fantasy_gm.memo.integrity import screen, traceable
+            allowed = traceable(
+                ctx.call_log, inputs_snapshot["projections"], ctx.week, ctx.season,
+                {k: v for k, v in terminal_result.items()
+                 if k not in ("memo", "what_would_change_this")},
+                round(confidence * 100, 2),
+            )
+            withheld = {}
+            for field in ("memo", "what_would_change_this"):
+                text = recommendation.get(field)
+                if not text:
+                    continue
+                shown, bad = screen(str(text), allowed)
+                if bad:
+                    withheld[field] = {"original": text, "untraced": bad}
+                    recommendation[field] = shown
+            if withheld:
+                recommendation["withheld"] = withheld
+            memo = recommendation.get("memo", "")
         elif terminal_tool == "abstain" and terminal_result:
             recommendation = {"abstained": True, **terminal_result}
             memo = terminal_result.get("memo", "Abstained.")
