@@ -1,7 +1,7 @@
 ---
 id: S-012
 slice_id: claim-would-clear
-status: todo
+status: blocked
 ---
 
 # Waiver recommendations account for whether the claim would actually clear
@@ -10,7 +10,12 @@ status: todo
 
 The waiver recommendation reflects our position in the snake order, so it stops naming players we were realistically never going to get — or names a fallback alongside the first choice.
 
-**This slice is conditional.** the claim-outcome slice produces the evidence for whether lost claims are frequent enough to justify it. If they are rare, this should be dropped rather than built.
+**This slice is conditional, and the condition is not met — it is blocked.**
+The claim-outcome slice now reads every claim's fate. Through week 8 of 2026
+the league filed 32 waiver claims: 25 cleared, 3 lost to priority, 1 failed
+for another reason, 1 cancelled, 2 pending — about one loss in ten resolved
+claims, and none of the three were ours. Lost claims are rare, so this is not
+built. Revisit if our own recorded results start showing priority losses.
 
 ## Contexts
 
@@ -45,7 +50,7 @@ mapped in `event-maps/`.
 | id | question | owner |
 |----|----------|-------|
 | H-03 | Whether to model priority at all, and if so whether to predict contention or merely rank fallbacks. Ranking fallbacks is far cheaper and may capture most of the value | R-01 |
-| — | Is other managers' waiver priority even observable through the API? If not, contention can only be guessed from ownership trends, which is weak enough to question the whole slice | R-01 |
+| — | Is other managers' waiver priority even observable through the API? **Yes** — the `mTeam` view carries every team's `waiverRank` | R-01 |
 
 <!--
 Explicitly sequenced by convenience rather than risk, and explicitly
