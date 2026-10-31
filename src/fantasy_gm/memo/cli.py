@@ -23,6 +23,8 @@ def _execute_approved_lineup(
     record: DecisionRecord,
     executor: Executor,
     team_id: str,
+    store: DecisionStore | None = None,
+    notifier=None,
 ) -> None:
     """Plan the approved lineup and execute it (dry-run unless confirmed live)."""
     rec = record.modified_recommendation or record.recommendation
@@ -60,6 +62,14 @@ def _execute_approved_lineup(
     else:
         print(f"\n  ✗ Execution failed: {result.error}")
         print("  Falling back to manual — set this lineup in the ESPN app yourself.")
+        if auth.live and store is not None:
+            from fantasy_gm.execute.failure import report_failed_write
+            from fantasy_gm.nudge.notify import MacNotifier
+            done = report_failed_write(store, record, plan, result,
+                                       getattr(executor, "adapter", None),
+                                       team_id, notifier or MacNotifier())
+            if done == "notified":
+                print("  A notification with these moves has been sent.")
 
 
 def _render_no_recommendation(record: DecisionRecord, rec: dict) -> None:
@@ -321,7 +331,7 @@ def present_and_approve(
         store.record_human_response(record.id, HumanResponse.APPROVED)
         print("\n  ✓ Approved.")
         if executor and team_id and not record.recommendation.get("abstained"):
-            _execute_approved_lineup(record, executor, team_id)
+            _execute_approved_lineup(record, executor, team_id, store)
         else:
             print("  Set this lineup in the ESPN app (no executor configured).")
         return record
@@ -343,7 +353,7 @@ def present_and_approve(
                                     modified_recommendation=modified)
         print("\n  ✓ Modification logged.")
         if executor and team_id:
-            _execute_approved_lineup(record, executor, team_id)
+            _execute_approved_lineup(record, executor, team_id, store)
         else:
             print("  Set your lineup in the ESPN app (no executor configured).")
         return record

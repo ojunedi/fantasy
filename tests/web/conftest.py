@@ -289,7 +289,20 @@ def app(web_settings, fake_adapter):
     application.state.adapter = fake_adapter
     application.state.executor.adapter = fake_adapter
     application.dependency_overrides[deps.get_adapter] = lambda: fake_adapter
+    # Never the real Mac notifier: a test must not pop a notification on screen.
+    application.state.notifier = RecordingNotifier()
     return application
+
+
+class RecordingNotifier:
+    def __init__(self, fail: bool = False):
+        self.sent: list[tuple[str, str]] = []
+        self.fail = fail
+
+    def send(self, body: str, subtitle: str = "") -> None:
+        if self.fail:
+            raise RuntimeError("osascript failed")
+        self.sent.append((body, subtitle))
 
 
 @pytest.fixture

@@ -183,6 +183,10 @@ def execute(decision_id: str, request: Request,
 
     plan = _build_plan(executor, record, settings.team_id)
     result = executor.execute(plan, live=auth.live)
+    if auth.live and not result.success:
+        from fantasy_gm.execute.failure import report_failed_write
+        report_failed_write(store, record, plan, result, request.app.state.adapter,
+                            settings.team_id, request.app.state.notifier)
 
     return request.app.state.templates.TemplateResponse(
         request, "partials/execution_result.html",

@@ -261,3 +261,104 @@ def test_refusals_and_validation_errors_reach_the_page(client):
     # htmx drops 4xx bodies unless told otherwise; 409 and 422 must swap.
     page = client.get("/history").text
     assert '"code":"4(09|22)","swap":true' in page
+
+
+# ------------------------------------------------- a failed write reaches the manager
+
+def _week_of_kickoff_soon(store):
+    """An approved decision for the week whose kickoff is ~2h away."""
+    from fantasy_gm.nudge.missed import week_kickoff
+    record = _record(week=6, season=2026)
+    store.save(record)
+    store.record_human_response(record.id, HumanResponse.APPROVED)
+    return record, week_kickoff(2026, 6)
+
+
+def test_wfail04_a_confirmed_failure_before_kickoff_notifies_with_the_moves_and_time_left(
+        client, app, store, monkeypatch):
+    from datetime import timedelta
+
+    import fantasy_gm.execute.failure as failure_mod
+
+    record, kickoff = _week_of_kickoff_soon(store)
+    failing = FakeExecutor(fail=True)
+    app.dependency_overrides[deps.get_executor] = lambda: failing
+
+    class Clock:
+        @staticmethod
+        def utcnow():
+            return kickoff - timedelta(hours=2, minutes=10)
+    monkeypatch.setattr(failure_mod, "datetime", Clock)
+
+    _execute(client, record, "LIVE")
+    sent = app.state.notifier.sent
+
+    sent_plan = failing.plan_set_lineup("8", 6, 2026, AGENT_STARTERS)
+    # WFAIL-04 THEN the notification lists the moves from the plan that was sent
+    assert len(sent) == 1
+    assert sent[0][0].endswith("Set it by hand: " + "; ".join(sent_plan.human_steps))
+    # WFAIL-04 AND it says kickoff is in 2h 10m
+    assert sent[0][1] == "Kickoff in 2h 10m"
+    assert "Couldn't check" not in sent[0][0]  # the read-back worked: say nothing of the sort
+
+
+@pytest.mark.parametrize("case", ["dry_run", "success", "refused"])
+def test_wfail03_a_dry_run_a_success_or_a_refusal_never_notifies(client, app, store, case,
+                                                                 monkeypatch):
+    from datetime import timedelta
+
+    import fantasy_gm.execute.failure as failure_mod
+
+    record, kickoff = _week_of_kickoff_soon(store)
+
+    class Clock:  # before kickoff, so a notification would be sent if one were due
+        @staticmethod
+        def utcnow():
+            return kickoff - timedelta(hours=1)
+    monkeypatch.setattr(failure_mod, "datetime", Clock)
+    executor = FakeExecutor()
+    app.dependency_overrides[deps.get_executor] = lambda: executor
+    if case == "refused":
+        pending = _record(week=6, season=2026)
+        store.save(pending)
+        record = pending
+
+    _execute(client, record, "" if case == "dry_run" else "LIVE")
+
+    # WFAIL-03 THEN no notification is sent
+    assert app.state.notifier.sent == []
+    # WFAIL-03 AND nothing is recorded as a write failure
+    assert "write_failure" not in (store.get(record.id).outcome or {})
+
+
+def test_wfail04_the_command_line_write_notifies_too(store):
+    """The weekly run's path: the command-line prompt, with a notifier passed in."""
+    import builtins
+    from datetime import timedelta
+    from unittest.mock import patch
+
+    import fantasy_gm.execute.failure as failure_mod
+    from fantasy_gm.memo.cli import _execute_approved_lineup
+    from tests.web.conftest import RecordingNotifier
+
+    record, kickoff = _week_of_kickoff_soon(store)
+    executor = FakeExecutor(fail=True)
+    executor.adapter = type("League", (), {
+        "get_raw_lineup_slots": lambda self, team, week, season: {"102": 20, "110": 2}})()
+    notifier = RecordingNotifier()
+
+    class Clock:
+        @staticmethod
+        def utcnow():
+            return kickoff - timedelta(minutes=45)
+
+    with patch.object(builtins, "input", lambda prompt="": "LIVE"), \
+         patch.object(failure_mod, "datetime", Clock):
+        _execute_approved_lineup(store.get(record.id), executor, "8", store, notifier)
+
+    # WFAIL-04 THEN the notification lists the moves from the plan that was sent
+    assert len(notifier.sent) == 1
+    assert "Breece Hall" in notifier.sent[0][0]
+    # WFAIL-04 AND it says kickoff is in 45m
+    assert notifier.sent[0][1] == "Kickoff in 45m"
+    assert store.get(record.id).outcome["write_failure"]["notified"] is True

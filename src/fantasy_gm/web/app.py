@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 
 from fantasy_gm.execute.espn_api import ESPNApiExecutor
 from fantasy_gm.execute.waiver_api import ESPNWaiverApiExecutor
+from fantasy_gm.nudge.notify import MacNotifier
 from fantasy_gm.web import deps
 from fantasy_gm.web.runs import RunManager
 from fantasy_gm.web.settings import WebSettings
@@ -36,6 +37,7 @@ def create_app(settings: WebSettings | None = None) -> FastAPI:
     app.state.adapter = deps.build_adapter(settings)
     app.state.executor = ESPNApiExecutor(app.state.adapter)
     app.state.waiver_executor = ESPNWaiverApiExecutor(app.state.adapter)
+    app.state.notifier = MacNotifier()
     app.state.reads = deps.ReadCache(settings.read_ttl_seconds)
     app.state.runs = RunManager()
     app.state.templates = create_templates(settings)
