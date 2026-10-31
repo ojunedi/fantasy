@@ -1048,6 +1048,8 @@ def waiver_view(record: "DecisionRecord | None", active_run: "Any | None") -> di
             "state": "recommendation",
             "candidate": rec.get("candidate"),
             "displaced_player": rec.get("displaced_player"),
+            "candidate_id": rec.get("candidate_id"),
+            "displaced_id": rec.get("displaced_id"),
             "value_margin": rec.get("value_margin"),
             "memo": record.memo,
             "decision_id": str(record.id),
@@ -1133,7 +1135,8 @@ def news_view(league: list[dict] | None, team_feeds: dict[str, list[dict]],
     def place(article: dict, from_league: bool) -> None:
         if article["id"] in seen:
             return
-        mine = [names[a] for a in article["athlete_ids"] if a in names]
+        mine_ids = [a for a in article["athlete_ids"] if a in names]
+        mine = [names[a] for a in mine_ids]
         teams = [t for t in article["team_ids"] if t in my_teams]
         if mine:
             group, about = "players", "Your player" + ("s" if len(mine) > 1 else "") + ": " + ", ".join(mine)
@@ -1145,6 +1148,7 @@ def news_view(league: list[dict] | None, team_feeds: dict[str, list[dict]],
             return
         seen.add(article["id"])
         groups[group].append({**article, "about": about,
+                              "players": [{"id": a, "name": names[a]} for a in mine_ids],
                               "when": relative_time(article.get("published"), now)})
 
     for a in league or []:

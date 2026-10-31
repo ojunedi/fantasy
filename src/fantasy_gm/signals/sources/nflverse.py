@@ -257,3 +257,27 @@ def expert_rankings_by_espn() -> tuple[dict[str, dict], str | None]:
             "scrape_date": row.get("scrape_date"),
         }
     return out, scrape_date
+
+
+_TOTAL_COLS = ["completions", "attempts", "passing_yards", "passing_tds",
+               "passing_interceptions", "carries", "rushing_yards", "rushing_tds",
+               "receptions", "targets", "receiving_yards", "receiving_tds",
+               "fg_made", "fg_att"]
+
+
+def season_totals(gsis_id: str, season: int) -> dict | None:
+    """Season-to-date real stats for one player, and the last week they cover.
+    None when nflverse has no rows for him."""
+    import polars as pl
+
+    df = load_player_stats(season)
+    rows = df.filter(pl.col("player_id") == gsis_id)
+    if "season_type" in rows.columns:
+        rows = rows.filter(pl.col("season_type") == "REG")
+    if rows.height == 0:
+        return None
+    totals = {c: float(rows[c].fill_null(0).sum()) for c in _TOTAL_COLS if c in rows.columns}
+    totals["through_week"] = int(rows["week"].max())
+    totals["games"] = rows.height
+    totals["team"] = rows.sort("week")["team"].to_list()[-1] if "team" in rows.columns else None
+    return totals

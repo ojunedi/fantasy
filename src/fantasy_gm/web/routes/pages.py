@@ -202,3 +202,20 @@ def news(request: Request,
         "active": "news",
         "news": context.news_view(league, team_feeds, players),
     })
+
+
+@router.get("/players/{player_id}/card", response_class=HTMLResponse)
+def player_card(player_id: str, request: Request,
+                adapter: ESPNAdapter = Depends(get_adapter),
+                settings: WebSettings = Depends(get_settings),
+                cache: ReadCache = Depends(get_reads)) -> HTMLResponse:
+    """The player card partial, swapped into the page's dialog."""
+    from fantasy_gm.web.player_card import build_card
+
+    week = reads.current_week(adapter, settings, cache)
+    try:
+        card = build_card(adapter, player_id, settings.season, week)
+    except Exception:
+        card = None
+    return request.app.state.templates.TemplateResponse(
+        request, "partials/player_card.html", {"card": card})

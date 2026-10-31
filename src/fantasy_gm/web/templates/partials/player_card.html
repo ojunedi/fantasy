@@ -1,0 +1,55 @@
+{# The player card, swapped into <dialog id="player-card">. #}
+<div class="pcard">
+  <button class="pcard__close" type="button" aria-label="Close"
+          onclick="this.closest('dialog').close()">×</button>
+  {% if not card %}
+  <p class="note">No card for this player.</p>
+  {% else %}
+  <header class="pcard__head">
+    {% if card.photo %}
+    <img class="pcard__photo" src="{{ card.photo }}" alt="{{ card.name }}"
+         onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'pcard__initials',textContent:'{{ card.initials }}'}))">
+    {% else %}
+    <span class="pcard__initials">{{ card.initials }}</span>
+    {% endif %}
+    <div>
+      <h3>{{ card.name }}</h3>
+      <div class="stamp">{{ card.position }}{% if card.team %} · {{ card.team }}{% endif %}</div>
+    </div>
+  </header>
+
+  <h4>Fantasy points · ESPN, league scoring</h4>
+  {% if card.weeks %}
+  <table class="pcard__weeks">
+    <tr>{% for w in card.weeks %}<th class="num">W{{ w.week }}</th>{% endfor %}</tr>
+    <tr>{% for w in card.weeks %}<td class="num">{% if w.points is not none %}{{ "%.1f" | format(w.points) }}{% else %}—{% endif %}</td>{% endfor %}</tr>
+  </table>
+  {% else %}
+  <p class="note">No completed weeks yet.</p>
+  {% endif %}
+
+  {% if card.stats %}
+  <h4>Season stats · through week {{ card.stats.through_week }} · nflverse</h4>
+  <table>
+    {% for label, line in card.stats.lines %}
+    <tr><td class="slot">{{ label }}</td><td>{{ line }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <h4>Season stats</h4>
+  <p class="note">No season stats yet.</p>
+  {% endif %}
+
+  <h4>Recent news</h4>
+  {% if card.news %}
+  <ul class="news">
+    {% for a in card.news %}
+    <li><a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.headline }}</a>
+      <div class="stamp">ESPN · {{ a.when }}</div></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="note">No recent headlines.</p>
+  {% endif %}
+  {% endif %}
+</div>

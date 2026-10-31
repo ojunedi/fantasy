@@ -44,5 +44,13 @@
 {% block content %}{% endblock %}
 </main>
 
+{# Any player-link fills this and opens it. #}
+<dialog id="player-card" class="pcard__dialog"></dialog>
+<script>
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    if (e.target.id === "player-card" && !e.target.open) e.target.showModal();
+  });
+</script>
+
 </body>
 </html>

@@ -1,3 +1,4 @@
+{% from "_macros.html" import player_link %}
 {# Waiver status partial — swapped by htmx every 5 s while a scan is running.
    When inactive, renders a plain container (no polling trigger). #}
 
@@ -24,9 +25,9 @@
 <div id="waiver-status">
   {% if notice %}<div class="banner" role="alert"><p>{{ notice.message }}</p></div>{% endif %}
   <article class="waiver-rec" role="region" aria-label="Waiver recommendation: {{ waiver.candidate }}">
-    <h3>Add {{ waiver.candidate }}</h3>
+    <h3>Add {{ player_link(waiver.candidate_id, waiver.candidate) }}</h3>
     {% if waiver.displaced_player %}
-    <p>Displaces <strong>{{ waiver.displaced_player }}</strong> — value margin: {{ waiver.value_margin }} pts per game</p>
+    <p>Displaces <strong>{{ player_link(waiver.displaced_id, waiver.displaced_player) }}</strong> — value margin: {{ waiver.value_margin }} pts per game</p>
     {% else %}
     <p>Fills an empty starting slot — {{ waiver.value_margin }} pts per game</p>
     {% endif %}

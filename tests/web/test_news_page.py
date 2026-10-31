@@ -57,7 +57,8 @@ def test_news01_a_story_about_one_of_my_players_is_under_your_players_naming_him
     # NEWS-01 THEN it appears under "Your players"
     assert "Josh Allen limited in practice" in mine
     # NEWS-01 AND it names that player
-    assert "Your player: Josh Allen" in mine
+    assert "Your player: " in mine
+    assert 'hx-get="/players/100/card"' in mine and ">Josh Allen</a>" in mine
 
 
 def test_news02_a_story_about_my_players_team_is_under_your_teams(client, feeds):

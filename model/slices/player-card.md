@@ -1,7 +1,7 @@
 ---
 id: S-015
 slice_id: player-card
-status: todo
+status: complete
 ---
 
 # Any player's name opens a card with his photo, season stats and recent news

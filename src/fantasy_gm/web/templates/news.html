@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import player_link %}
 {% block title %}News · Fantasy GM{% endblock %}
 
 {% macro stories(items, empty) %}
@@ -7,7 +8,8 @@
   {% for a in items %}
   <li>
     <a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.headline }}</a>
-    <div class="stamp">{% if a.about %}{{ a.about }} · {% endif %}ESPN · {{ a.when }}</div>
+    <div class="stamp">
+      {%- if a.players %}Your player{{ "s" if a.players|length > 1 }}: {% for p in a.players %}{{ player_link(p.id, p.name) }}{% if not loop.last %}, {% endif %}{% endfor %} · {% elif a.about %}{{ a.about }} · {% endif %}ESPN · {{ a.when }}</div>
     {% if a.description %}<p>{{ a.description }}</p>{% endif %}
   </li>
   {% endfor %}

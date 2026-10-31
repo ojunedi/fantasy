@@ -1,10 +1,17 @@
 {# Shared row renderers. Slot labels are the leftmost data column, not decoration. #}
 
+{% macro player_link(player_id, name) -%}
+{%- if player_id -%}
+<a class="player-link" href="#" hx-get="/players/{{ player_id }}/card" hx-target="#player-card"
+   hx-swap="innerHTML">{{ name }}</a>
+{%- else -%}{{ name }}{%- endif -%}
+{%- endmacro %}
+
 {% macro player_row(row, show_opponent=True, show_points=True) %}
 <tr class="{{ 'is-swap' if row.is_swap else '' }}{{ ' is-played' if row.has_played else '' }}">
   <td class="slot">{{ row.slot }}</td>
   <td class="player">
-    {{ row.name }}
+    {{ player_link(row.player_id, row.name) }}
     {% if row.status_label %}
     <span class="status--{{ row.status }}">{{ row.status_label }}</span>
     {% endif %}
