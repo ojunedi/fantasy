@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fantasy_gm.adapters.espn import ESPNAdapter
+from fantasy_gm.adapters.espn import PROJECTIONS_FILTER_HEADERS, ESPNAdapter, cache_key
 from fantasy_gm.models import (
     InjuryReport,
     PlayerProjection,
@@ -50,10 +50,11 @@ def collect_signals(
     # --- Projections (ESPN, real) ---
     try:
         raw_proj = adapter.get_projections(week=week, season=season)
-        cached_at = adapter._cache.get_cached_at(
-            f"{season}_{adapter.league_id}_"
-            + str(sorted({"view": "kona_player_info", "scoringPeriodId": week}.items()))
-        )
+        cached_at = adapter._cache.get_cached_at(cache_key(
+            season, adapter.league_id,
+            {"view": "kona_player_info", "scoringPeriodId": week},
+            PROJECTIONS_FILTER_HEADERS,
+        ))
         as_of = datetime.utcfromtimestamp(cached_at) if cached_at else datetime.utcnow()
         for rp in roster_players:
             pid = rp.player.platform_id

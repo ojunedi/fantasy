@@ -50,14 +50,16 @@ def _team_abbr(nfl_team: str | None) -> str:
     return ESPN_PRO_TEAM_ABBR.get(str(nfl_team), str(nfl_team))
 
 
-def cache_stamp(adapter: Any, season: int, params: dict) -> float | None:
+def cache_stamp(adapter: Any, season: int, params: dict,
+                headers: dict | None = None) -> float | None:
     """Epoch seconds when this ESPN read was cached, or None if never.
 
-    Mirrors the key `ESPNAdapter._fetch` builds, exactly as `signals/collector.py`
-    already does, so the page can always show how old what you're reading is.
+    Uses the same key `ESPNAdapter._fetch` builds, so the page can always show
+    how old what you're reading is.
     """
+    from fantasy_gm.adapters.espn import cache_key
     try:
-        key = f"{season}_{adapter.league_id}_{sorted(params.items())}"
+        key = cache_key(season, adapter.league_id, params, headers)
         return adapter._cache.get_cached_at(key)
     except Exception:
         return None
@@ -989,6 +991,71 @@ def trade_needs_view(my_needs: dict, chips: list) -> dict:
         })
     chip_count = len(chips)
     return {"rows": rows, "chip_count": chip_count}
+
+
+def waiver_view(record: "DecisionRecord | None", active_run: "Any | None") -> dict:
+    """Map a WaiverDecision record and active run to template variables.
+
+    Mirrors decision_summary() shape but surfaces the waiver-specific fields
+    from the recommendation dict (which holds a serialized WaiverScanResult).
+    """
+    from fantasy_gm.models import WaiverScanState
+
+    if active_run is not None:
+        return {"state": "running"}
+
+    if record is None:
+        return {"state": "no_scan"}
+
+    rec = record.recommendation or {}
+    scan_state = rec.get("scan_state")
+    human_response = record.human_response.value if record.human_response else None
+
+    if human_response:
+        return {
+            "state": "decided",
+            "human_response": human_response,
+            "candidate": rec.get("candidate"),
+            "created_at": record.created_at,
+            "decision_id": str(record.id),
+        }
+
+    if scan_state == WaiverScanState.STALE.value:
+        return {
+            "state": "stale",
+            "failing_source": rec.get("failing_source"),
+        }
+
+    if scan_state == WaiverScanState.PROVENANCE_ERROR.value:
+        return {
+            "state": "stale",
+            "failing_source": rec.get("failing_source"),
+            "error_code": "SIGNAL_MISSING_PROVENANCE",
+        }
+
+    if scan_state == WaiverScanState.RECOMMENDATION.value:
+        return {
+            "state": "recommendation",
+            "candidate": rec.get("candidate"),
+            "displaced_player": rec.get("displaced_player"),
+            "value_margin": rec.get("value_margin"),
+            "memo": record.memo,
+            "decision_id": str(record.id),
+        }
+
+    if scan_state == WaiverScanState.NO_CANDIDATE.value:
+        return {
+            "state": "no_candidate",
+            "closest_miss": rec.get("closest_miss"),
+            "failed_bar": rec.get("failed_bar"),
+            "failed_by": rec.get("failed_by"),
+        }
+
+    if scan_state == WaiverScanState.BRIEF_REJECTED.value:
+        # The recommendation is withheld: nothing about the candidate is passed on.
+        return {"state": "brief_rejected"}
+
+    return {"state": "no_scan"}
 
 
 def trade_send_plan_view(plan) -> dict:

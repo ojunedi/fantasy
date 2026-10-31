@@ -1,0 +1,94 @@
+{# Waiver status partial — swapped by htmx every 5 s while a scan is running.
+   When inactive, renders a plain container (no polling trigger). #}
+
+{% if waiver.state == "no_scan" %}
+<div id="waiver-status">
+  <p>No waiver scan for this week yet.</p>
+  <form action="/api/waiver/scan" method="post"
+        hx-post="/api/waiver/scan" hx-target="#waiver-status" hx-swap="outerHTML">
+    <button type="submit">Run scan</button>
+  </form>
+</div>
+
+{% elif waiver.state == "running" %}
+<div id="waiver-status"
+     hx-get="/api/waiver/status"
+     hx-trigger="every 5s"
+     hx-swap="outerHTML">
+  <div class="spinner" role="status" aria-label="Scanning waiver wire"></div>
+  <p>Scanning waiver wire…</p>
+</div>
+
+{% elif waiver.state == "recommendation" %}
+<div id="waiver-status">
+  <article class="waiver-rec" role="region" aria-label="Waiver recommendation: {{ waiver.candidate }}">
+    <h3>Add {{ waiver.candidate }}</h3>
+    {% if waiver.displaced_player %}
+    <p>Displaces <strong>{{ waiver.displaced_player }}</strong> — value margin: {{ waiver.value_margin }} pts per game</p>
+    {% else %}
+    <p>Fills an empty starting slot — {{ waiver.value_margin }} pts per game</p>
+    {% endif %}
+    {% if waiver.memo %}
+    <details>
+      <summary>Brief</summary>
+      <p>{{ waiver.memo }}</p>
+    </details>
+    {% endif %}
+    <form action="/api/waiver/decide" method="post">
+      <button type="submit" name="action" value="claim">Intend to claim</button>
+      <button type="submit" name="action" value="pass">Pass</button>
+    </form>
+  </article>
+</div>
+
+{% elif waiver.state == "no_candidate" %}
+<div id="waiver-status">
+  <p>No add worth making this week.</p>
+  {% if waiver.closest_miss %}
+  <p>
+    Closest: <strong>{{ waiver.closest_miss }}</strong> —
+    failed the {{ waiver.failed_bar }} bar
+    {% if waiver.failed_by is not none %}by {{ waiver.failed_by }} {{ "spots" if waiver.failed_bar == "absolute" else "pts per game" }}{% endif %}.
+  </p>
+  {% endif %}
+</div>
+
+{% elif waiver.state == "stale" %}
+<div id="waiver-status" class="banner banner--warn" role="alert">
+  <p>
+    Scan could not complete —
+    {% if waiver.error_code == "SIGNAL_MISSING_PROVENANCE" %}
+      a signal is missing its source or timestamp
+    {% else %}
+      <strong>{{ waiver.failing_source }}</strong> data is too old
+    {% endif %}.
+  </p>
+  <form action="/api/waiver/scan" method="post"
+        hx-post="/api/waiver/scan" hx-target="#waiver-status" hx-swap="outerHTML">
+    <button type="submit">Re-run scan</button>
+  </form>
+</div>
+
+{% elif waiver.state == "brief_rejected" %}
+<div id="waiver-status" class="banner banner--warn" role="alert">
+  <p>Scan could not complete — the written brief quoted a number the analysis
+     didn't produce, so the recommendation is held back.</p>
+  <form action="/api/waiver/scan" method="post"
+        hx-post="/api/waiver/scan" hx-target="#waiver-status" hx-swap="outerHTML">
+    <button type="submit">Re-run scan</button>
+  </form>
+</div>
+
+{% elif waiver.state == "decided" %}
+<div id="waiver-status">
+  {% if waiver.human_response == "approved" %}
+  <p>You recorded intent to claim <strong>{{ waiver.candidate }}</strong>.</p>
+  {% else %}
+  <p>You passed on the waiver wire this week.</p>
+  {% endif %}
+  <a href="/history">View in decision history</a>
+</div>
+
+{% else %}
+<div id="waiver-status"></div>
+{% endif %}

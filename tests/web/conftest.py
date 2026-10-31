@@ -233,7 +233,7 @@ class FakeAdapter:
                 Position.BENCH: 20, Position.IR: 21}
         return {rp.player.platform_id: espn[rp.slot] for rp in self._roster.players}
 
-    def get_free_agents(self, week, season, position_filter=None):
+    def get_free_agents(self, week, season, position_filter=None, fresh=False):
         return []
 
     def get_transactions(self, week, season):

@@ -11,7 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from fantasy_gm.adapters.espn import ESPNAdapter
+from fantasy_gm.adapters.espn import PROJECTIONS_FILTER_HEADERS, ESPNAdapter
 from fantasy_gm.db.store import DecisionStore
 from fantasy_gm.models import DecisionType
 from fantasy_gm.web import context, reads
@@ -73,7 +73,8 @@ def build_team_context(request: Request, adapter, settings: WebSettings,
 
     stamps = {
         "projections": context.cache_stamp(
-            adapter, season, {"view": "kona_player_info", "scoringPeriodId": week}),
+            adapter, season, {"view": "kona_player_info", "scoringPeriodId": week},
+            PROJECTIONS_FILTER_HEADERS),
         "roster": context.cache_stamp(
             adapter, season, {"view": "mRoster", "scoringPeriodId": week}),
     }

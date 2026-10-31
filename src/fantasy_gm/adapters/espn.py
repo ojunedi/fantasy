@@ -48,6 +48,30 @@ from fantasy_gm.models import (
 
 ESPN_BASE = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{season}/segments/0/leagues/{league_id}"
 
+# The projections read. ESPN 400s on a bare {"limit": N} filter — a sort key is
+# required for kona_player_info. sortPercOwned returns every player (ordered by
+# ownership) with their stats array intact. Verified live.
+PROJECTIONS_FILTER_HEADERS: dict[str, str] = {
+    "X-Fantasy-Filter": '{"players": {"limit": 1500, '
+                        '"sortPercOwned": {"sortPriority": 1, "sortAsc": false}}}',
+}
+
+
+def cache_key(season: int, league_id: str, params: dict[str, Any] | None = None,
+              headers: dict[str, str] | None = None) -> str:
+    """The disk-cache key for one ESPN read.
+
+    The filter header is part of the key: free agents and projections share
+    the same view and week params and differ only in X-Fantasy-Filter, so a
+    params-only key served one's payload as the other's.
+    """
+    key = f"{season}_{league_id}_{sorted((params or {}).items())}"
+    fantasy_filter = (headers or {}).get("X-Fantasy-Filter")
+    if fantasy_filter:
+        import hashlib
+        key += "_" + hashlib.sha1(fantasy_filter.encode()).hexdigest()[:12]
+    return key
+
 # ESPN slot ID → Position mapping (standard NFL fantasy)
 ESPN_SLOT_MAP: dict[int, Position] = {
     0: Position.QB,
@@ -102,9 +126,9 @@ class ESPNAdapter(FantasyPlatform):
 
     def _fetch(self, season: int, params: dict[str, Any] | None = None, headers: dict[str, str] | None = None, bypass_cache: bool = False) -> dict:
         url = ESPN_BASE.format(season=season, league_id=self.league_id)
-        cache_key = f"{season}_{self.league_id}_{sorted((params or {}).items())}"
+        key = cache_key(season, self.league_id, params, headers)
         if not bypass_cache:
-            cached = self._cache.get(cache_key)
+            cached = self._cache.get(key)
             if cached is not None:
                 return cached[0]
 
@@ -129,7 +153,7 @@ class ESPNAdapter(FantasyPlatform):
         self._last_request_at = time.time()
 
         data = resp.json()
-        self._cache.set(cache_key, data)
+        self._cache.set(key, data)
         return data
 
     # ------------------------------------------------------------------
@@ -303,6 +327,7 @@ class ESPNAdapter(FantasyPlatform):
         week: int,
         season: int,
         position_filter: list[str] | None = None,
+        fresh: bool = False,
     ) -> list[FreeAgent]:
         filter_header: dict = {
             "players": {
@@ -324,6 +349,7 @@ class ESPNAdapter(FantasyPlatform):
             season,
             params={"view": "kona_player_info", "scoringPeriodId": week},
             headers={"X-Fantasy-Filter": json.dumps(filter_header)},
+            bypass_cache=fresh,
         )
         players_raw = data.get("players", [])
         agents = []
@@ -379,21 +405,10 @@ class ESPNAdapter(FantasyPlatform):
         This is ESPN-specific (not part of FantasyPlatform) — it's a signal
         source, wrapped by signals/projections.py with freshness metadata.
         """
-        import json as _json
-        # ESPN 400s on a bare {"limit": N} filter — a sort key is required for
-        # kona_player_info. sortPercOwned returns every player (ordered by
-        # ownership) with their stats array intact, from which we pull the
-        # week's projection (statSourceId == 1). Verified live.
-        filter_header = {
-            "players": {
-                "limit": 1500,
-                "sortPercOwned": {"sortPriority": 1, "sortAsc": False},
-            }
-        }
         data = self._fetch(
             season,
             params={"view": "kona_player_info", "scoringPeriodId": week},
-            headers={"X-Fantasy-Filter": _json.dumps(filter_header)},
+            headers=PROJECTIONS_FILTER_HEADERS,
         )
         projections: dict[str, float] = {}
         for entry in data.get("players", []):
@@ -415,18 +430,11 @@ class ESPNAdapter(FantasyPlatform):
         Makes the same kona_player_info call and captures defaultPositionId and
         fullName alongside projected points. Used by the backtest harness.
         """
-        import json as _json
         from fantasy_gm.models import PlayerProjection
-        filter_header = {
-            "players": {
-                "limit": 1500,
-                "sortPercOwned": {"sortPriority": 1, "sortAsc": False},
-            }
-        }
         data = self._fetch(
             season,
             params={"view": "kona_player_info", "scoringPeriodId": week},
-            headers={"X-Fantasy-Filter": _json.dumps(filter_header)},
+            headers=PROJECTIONS_FILTER_HEADERS,
         )
         results: list[PlayerProjection] = []
         for entry in data.get("players", []):
@@ -445,6 +453,43 @@ class ESPNAdapter(FantasyPlatform):
                         player_name=name,
                         projected_points=round(float(stat.get("appliedTotal", 0.0)), 2),
                         position=position,
+                        week=week,
+                        season=season,
+                    ))
+                    break
+        return results
+
+    def get_ros_projections(self, week: int, season: int) -> list:
+        """Rest-of-season projected points per game, as list[PlayerProjection].
+
+        Same kona_player_info read as get_projections (one cache entry). The
+        season-level projection (statSourceId 1, scoringPeriodId 0, split 0)
+        covers the games still to play; its appliedAverage is per game, so a
+        bye or a short absence does not lower it. Players ESPN has no
+        rest-of-season projection for are omitted.
+        """
+        from fantasy_gm.models import PlayerProjection
+        data = self._fetch(
+            season,
+            params={"view": "kona_player_info", "scoringPeriodId": week},
+            headers=PROJECTIONS_FILTER_HEADERS,
+        )
+        results: list[PlayerProjection] = []
+        for entry in data.get("players", []):
+            p = entry.get("player", {})
+            for stat in p.get("stats", []):
+                if (
+                    stat.get("statSourceId") == 1
+                    and stat.get("scoringPeriodId") == 0
+                    and stat.get("statSplitTypeId") == 0
+                    and stat.get("seasonId") == season
+                    and stat.get("appliedAverage") is not None
+                ):
+                    results.append(PlayerProjection(
+                        player_id=str(p.get("id", "")),
+                        player_name=p.get("fullName", ""),
+                        projected_points=round(float(stat["appliedAverage"]), 2),
+                        position=ESPN_POSITION_MAP.get(p.get("defaultPositionId", 0), Position.WR),
                         week=week,
                         season=season,
                     ))

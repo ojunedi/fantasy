@@ -55,6 +55,7 @@ class HumanResponse(str, Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     MODIFIED = "modified"
+    DECLINED = "declined"   # waiver: manager chose not to file a surfaced claim
 
 
 class Platform(str, Enum):
@@ -335,6 +336,40 @@ class DecisionRecord(BaseModel):
     # Outcome — filled in after the week resolves
     outcome: dict[str, Any] | None = None
     outcome_recorded_at: datetime | None = None
+
+
+# ---------------------------------------------------------------------------
+# Waiver scan output (WaiverAnalysis aggregate result)
+# ---------------------------------------------------------------------------
+
+class WaiverScanState(str, Enum):
+    RECOMMENDATION = "recommendation"
+    NO_CANDIDATE = "no_candidate"
+    STALE = "stale"
+    PROVENANCE_ERROR = "provenance_error"
+    BRIEF_REJECTED = "brief_rejected"
+
+
+class WaiverScanResult(BaseModel):
+    """Output of the waiver scoring agent (WaiverAnalysis terminal state)."""
+    scan_state: WaiverScanState
+    # Set when scan_state == RECOMMENDATION
+    candidate: str | None = None
+    displaced_player: str | None = None
+    value_margin: float | None = None
+    bars_cleared: list[str] = Field(default_factory=list)
+    # Set when scan_state == NO_CANDIDATE
+    closest_miss: str | None = None
+    failed_bar: str | None = None
+    failed_by: float | None = None
+    # Set when scan_state == STALE or PROVENANCE_ERROR
+    failing_source: str | None = None
+    # The figures the scoring step worked from. Carried so a brief can quote
+    # them and the brief check can trace every number it quotes (I-26).
+    candidate_value: float | None = None
+    displaced_value: float | None = None
+    candidate_rank: int | None = None
+    startable_tier: int | None = None
 
 
 # ---------------------------------------------------------------------------

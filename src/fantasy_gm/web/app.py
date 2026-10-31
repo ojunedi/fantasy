@@ -38,13 +38,14 @@ def create_app(settings: WebSettings | None = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=str(settings.static_dir)), name="static")
 
-    from fantasy_gm.web.routes import approve, nudge, pages, partials, runs_routes, trades
+    from fantasy_gm.web.routes import approve, nudge, pages, partials, runs_routes, trades, waiver
     app.include_router(pages.router)
     app.include_router(partials.router)
     app.include_router(runs_routes.router)
     app.include_router(approve.router)
     app.include_router(trades.router)
     app.include_router(nudge.router)
+    app.include_router(waiver.router)
 
     from fantasy_gm.web.errors import install_error_handlers
     install_error_handlers(app)

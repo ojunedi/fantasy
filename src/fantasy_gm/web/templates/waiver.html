@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Waiver Wire · Fantasy GM{% endblock %}
+
+{% block content %}
+<div class="section__head">
+  <h2>Waiver Wire — Week {{ week }}</h2>
+</div>
+
+{# The status partial polls itself while a scan runs; every action swaps it whole. #}
+<div id="waiver-area">
+  {% include "partials/waiver_status.html" %}
+</div>
+{% endblock %}

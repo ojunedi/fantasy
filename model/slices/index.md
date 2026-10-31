@@ -15,7 +15,7 @@ Thirteen slices. Three touch the interface.
 |----|----------|------|-----------|------------|--------|-----------------|
 | S-001 | decision-history-survives | My season's decision record survives losing the laptop | | | complete | decision-history-survives |
 | S-002 | pre-kickoff-nudge | I am nudged before kickoff when a recommendation is sitting unread | yes | | complete | pre-kickoff-nudge |
-| S-003 | waiver-add-worth-making | The agent tells me whether there is a waiver add worth making, and if so which | yes | | todo | |
+| S-003 | waiver-add-worth-making | The agent tells me whether there is a waiver add worth making, and if so which | yes | | complete | waiver-add-worth-making |
 | S-004 | one-approval-gate | There is one approval gate, not two that can silently disagree | | | todo | |
 | S-005 | waiver-claim-filed | An approved claim is filed through the API and confirmed, not typed by hand | | S-003,S-004 | todo | |
 | S-006 | claim-outcome-recorded | I find out whether my claim cleared or lost to priority | | S-005 | todo | |
