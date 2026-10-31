@@ -3,6 +3,7 @@
 
 {% if waiver.state == "no_scan" %}
 <div id="waiver-status">
+  {% if notice %}<div class="banner" role="alert"><p>{{ notice.message }}</p></div>{% endif %}
   <p>No waiver scan for this week yet.</p>
   <form action="/api/waiver/scan" method="post"
         hx-post="/api/waiver/scan" hx-target="#waiver-status" hx-swap="outerHTML">
@@ -21,6 +22,7 @@
 
 {% elif waiver.state == "recommendation" %}
 <div id="waiver-status">
+  {% if notice %}<div class="banner" role="alert"><p>{{ notice.message }}</p></div>{% endif %}
   <article class="waiver-rec" role="region" aria-label="Waiver recommendation: {{ waiver.candidate }}">
     <h3>Add {{ waiver.candidate }}</h3>
     {% if waiver.displaced_player %}
@@ -43,6 +45,7 @@
 
 {% elif waiver.state == "no_candidate" %}
 <div id="waiver-status">
+  {% if notice %}<div class="banner" role="alert"><p>{{ notice.message }}</p></div>{% endif %}
   <p>No add worth making this week.</p>
   {% if waiver.closest_miss %}
   <p>
@@ -55,6 +58,7 @@
 
 {% elif waiver.state == "stale" %}
 <div id="waiver-status" class="banner banner--warn" role="alert">
+  {% if notice %}<div class="banner" role="alert"><p>{{ notice.message }}</p></div>{% endif %}
   <p>
     Scan could not complete —
     {% if waiver.error_code == "SIGNAL_MISSING_PROVENANCE" %}
@@ -71,6 +75,7 @@
 
 {% elif waiver.state == "brief_rejected" %}
 <div id="waiver-status" class="banner banner--warn" role="alert">
+  {% if notice %}<div class="banner" role="alert"><p>{{ notice.message }}</p></div>{% endif %}
   <p>Scan could not complete — the written brief quoted a number the analysis
      didn't produce, so the recommendation is held back.</p>
   <form action="/api/waiver/scan" method="post"
@@ -80,11 +85,55 @@
 </div>
 
 {% elif waiver.state == "decided" %}
+{% set f = waiver.filing %}
 <div id="waiver-status">
-  {% if waiver.human_response == "approved" %}
-  <p>You recorded intent to claim <strong>{{ waiver.candidate }}</strong>.</p>
+  {% if notice %}
+  {% if notice.kind == "dry_run" %}
+  <div class="panel"><p><span class="tag tag--quiet">Dry run</span> {{ notice.message }}</p></div>
+  {% elif notice.kind == "roster_changed" %}
+  <div class="banner" role="alert">
+    <p>{{ notice.message }}</p>
+    <form action="/api/waiver/scan" method="post"
+          hx-post="/api/waiver/scan" hx-target="#waiver-status" hx-swap="outerHTML">
+      <button type="submit">Re-run scan</button>
+    </form>
+  </div>
   {% else %}
+  <div class="banner" role="alert"><p>{{ notice.message }}</p></div>
+  {% endif %}
+  {% endif %}
+
+  {% if waiver.human_response != "approved" %}
   <p>You passed on the waiver wire this week.</p>
+  {% elif f and f.state == "confirmed" %}
+  <div class="panel">
+    <p><span class="tag tag--chyron">Filed</span> Claim filed — ESPN shows it as pending.
+      {% if f.waiver_rank %}You are {{ f.waiver_rank }} of {{ f.team_count }} in waiver priority.{% endif %}</p>
+  </div>
+  {% elif f and f.state in ("unconfirmed", "sending") %}
+  <div class="banner banner--warn" role="alert"><p>{{ f.message or "A filing was started but its result was not recorded. Check the ESPN app before doing anything — don't file again." }}</p></div>
+  {% elif waiver.can_file %}
+  {% if f and f.state == "failed" and not notice %}
+  <div class="banner" role="alert">
+    <p>The claim was not filed — {{ f.error }}. File it in the ESPN app yourself:
+       add {{ waiver.candidate }}, drop {{ waiver.displaced_player }}.</p>
+  </div>
+  {% endif %}
+  <p>You intend to claim <strong>{{ waiver.candidate }}</strong>, dropping <strong>{{ waiver.displaced_player }}</strong>.</p>
+  {% if waiver.fileable %}
+  <form hx-post="/api/waiver/file" hx-target="#waiver-status" hx-swap="outerHTML"
+        hx-disabled-elt="find button">
+    <p>
+      <label for="confirm">Type LIVE to file this claim with ESPN. Anything else is a dry run.</label>
+      <input type="text" id="confirm" name="confirm" autocomplete="off" placeholder="dry run">
+    </p>
+    <div class="btn-row"><button class="btn btn--danger" type="submit">File claim</button></div>
+  </form>
+  {% else %}
+  <p class="note">This scan was recorded before claims could be filed from here — file it in the ESPN app.</p>
+  {% endif %}
+  {% else %}
+  <p>You intend to claim <strong>{{ waiver.candidate }}</strong>, dropping <strong>{{ waiver.displaced_player }}</strong>.</p>
   {% endif %}
   <a href="/history">View in decision history</a>
 </div>

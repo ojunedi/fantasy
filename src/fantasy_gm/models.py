@@ -356,6 +356,9 @@ class WaiverScanResult(BaseModel):
     # Set when scan_state == RECOMMENDATION
     candidate: str | None = None
     displaced_player: str | None = None
+    # Platform ids for the filing step; None on scans recorded before it existed.
+    candidate_id: str | None = None
+    displaced_id: str | None = None
     value_margin: float | None = None
     bars_cleared: list[str] = Field(default_factory=list)
     # Set when scan_state == NO_CANDIDATE

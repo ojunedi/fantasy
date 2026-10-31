@@ -184,6 +184,8 @@ def score_candidates(
             scan_state=WaiverScanState.RECOMMENDATION,
             candidate=best_candidate["name"],
             displaced_player=_find_worst_name(roster, pos),
+            candidate_id=best_candidate.get("player_id"),
+            displaced_id=_find_worst(roster, pos).get("player_id"),
             value_margin=round(best_candidate["ros_value"] - worst, 2),
             bars_cleared=["relative", "absolute", "startability"],
             candidate_value=best_candidate["ros_value"],
@@ -215,14 +217,18 @@ def startable_tiers(league_settings: LeagueSettings) -> dict[str, int]:
     return tiers
 
 
-def _find_worst_name(roster: list[dict], position: str) -> str | None:
+def _find_worst(roster: list[dict], position: str) -> dict:
     worst_val = float("inf")
-    worst_name = None
+    worst: dict = {}
     for p in roster:
         if p["position"] == position and p.get("ros_value", 0.0) < worst_val:
             worst_val = p.get("ros_value", 0.0)
-            worst_name = p["name"]
-    return worst_name
+            worst = p
+    return worst
+
+
+def _find_worst_name(roster: list[dict], position: str) -> str | None:
+    return _find_worst(roster, position).get("name")
 
 
 # ---------------------------------------------------------------------------
@@ -463,6 +469,7 @@ def gather_scan_inputs(adapter, team_id: str, week: int, season: int,
     for rp in my_roster.players:
         proj = by_id.get(rp.player.platform_id)
         roster.append({
+            "player_id": rp.player.platform_id,
             "name": rp.player.name,
             "position": rp.player.position.value,
             "ros_value": proj.projected_points if proj else 0.0,
@@ -491,6 +498,7 @@ def gather_scan_inputs(adapter, team_id: str, week: int, season: int,
             starts = value > mine[n - 1]
             gap = 0.0 if starts else round(mine[n - 1] - value, 2)
         candidates.append({
+            "player_id": pid,
             "name": fa.player.name,
             "position": pos,
             "ros_value": value,

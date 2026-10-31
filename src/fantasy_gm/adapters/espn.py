@@ -592,6 +592,33 @@ class ESPNAdapter(FantasyPlatform):
             ))
         return txns
 
+    def get_pending_waiver_claims(self, season: int) -> list[dict]:
+        """Raw pending WAIVER transactions, cache bypassed.
+
+        Same reasoning as get_pending_trade_proposals: this confirms a claim was
+        filed, so it reads ESPN's own shape (items carry from/to team ids) and
+        never trusts a cached read. A filed claim reads back `PENDING` until the
+        waiver window processes it.
+        """
+        data = self._fetch(season, params={"view": "mTransactions2"}, bypass_cache=True)
+        return [
+            t for t in data.get("transactions", [])
+            if t.get("type") == "WAIVER"
+            and str(t.get("status", "")).upper() == "PENDING"
+        ]
+
+    def get_waiver_rank(self, team_id: str, season: int) -> tuple[int | None, int]:
+        """(our position in the waiver order, number of teams), read fresh.
+
+        1 is first in line. None when ESPN does not report a rank for the team.
+        """
+        data = self._fetch(season, params={"view": "mTeam"}, bypass_cache=True)
+        teams = data.get("teams", [])
+        for t in teams:
+            if str(t.get("id")) == str(team_id):
+                return t.get("waiverRank"), len(teams)
+        return None, len(teams)
+
     def get_pending_trade_proposals(self, season: int) -> list[dict]:
         """Raw pending TRADE_PROPOSAL transactions, cache bypassed.
 

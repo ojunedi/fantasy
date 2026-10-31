@@ -1012,12 +1012,19 @@ def waiver_view(record: "DecisionRecord | None", active_run: "Any | None") -> di
     human_response = record.human_response.value if record.human_response else None
 
     if human_response:
+        filing = (record.outcome or {}).get("filing")
         return {
             "state": "decided",
             "human_response": human_response,
             "candidate": rec.get("candidate"),
+            "displaced_player": rec.get("displaced_player"),
             "created_at": record.created_at,
             "decision_id": str(record.id),
+            "filing": filing,
+            # A live filing that reached ESPN is never offered again.
+            "can_file": (human_response == "approved"
+                         and (filing is None or filing.get("state") == "failed")),
+            "fileable": bool(rec.get("candidate_id") and rec.get("displaced_id")),
         }
 
     if scan_state == WaiverScanState.STALE.value:

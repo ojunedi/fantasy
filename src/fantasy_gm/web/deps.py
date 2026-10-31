@@ -64,6 +64,10 @@ def get_executor(request: Request) -> Executor:
     return request.app.state.executor
 
 
+def get_waiver_executor(request: Request):
+    return request.app.state.waiver_executor
+
+
 @lru_cache(maxsize=8)
 def _league_settings_cached(adapter: ESPNAdapter, season: int) -> LeagueSettings:
     return adapter.get_league_settings(season)

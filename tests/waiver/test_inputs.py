@@ -74,7 +74,7 @@ def test_kicker_on_bye_keeps_his_value_so_a_weaker_kicker_is_not_recommended():
     roster, candidates, _ = gather_scan_inputs(adapter, "1", WEEK, SEASON, _league())
     result = score_candidates(candidates, roster, _league(), WEEK)
 
-    assert roster == [{"name": "Bye Kicker", "position": "K", "ros_value": 8.5}]
+    assert roster == [{"player_id": "1", "name": "Bye Kicker", "position": "K", "ros_value": 8.5}]
     assert candidates[0]["startable_weeks"] == 0
     assert result.scan_state == WaiverScanState.NO_CANDIDATE
     assert result.closest_miss == "Waiver Kicker"
@@ -105,3 +105,6 @@ def test_recommendation_always_names_a_displaced_player():
     assert result.scan_state == WaiverScanState.RECOMMENDATION
     assert result.displaced_player == "WR B"
     assert result.value_margin == 3.0
+    # the filing step sends these ids to ESPN
+    assert result.candidate_id == "3"
+    assert result.displaced_id == "2"
