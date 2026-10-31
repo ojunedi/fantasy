@@ -97,7 +97,15 @@ def build_team_context(request: Request, adapter, settings: WebSettings,
 
 @router.get("/history", response_class=HTMLResponse)
 def history(request: Request,
+            adapter: ESPNAdapter = Depends(get_adapter),
+            settings: WebSettings = Depends(get_settings),
             store: DecisionStore = Depends(get_store)) -> HTMLResponse:
+    from fantasy_gm.nudge.missed import record_missed_lineups
+    try:
+        if record_missed_lineups(store, adapter, settings.team_id, settings.season):
+            store.backup_if_dirty()
+    except Exception:
+        pass  # measuring a miss must never stop the history from rendering
     records = store.list_recent(limit=50)
     return request.app.state.templates.TemplateResponse(request, "history.html", {
         "active": "history",

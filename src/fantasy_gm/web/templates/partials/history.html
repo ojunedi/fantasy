@@ -25,7 +25,12 @@
       </td>
       <td class="num">{{ d.confidence | pct }}</td>
       <td>
-        {% if d.human_response %}{{ d.human_response }}
+        {# A miss is shown even when a response came later: the week was still
+           missed, and the late response must not hide it. #}
+        {% if d.missed %}<span class="tag tag--alert">missed</span>
+          {% if d.missed.cost >= 0.05 %}−{{ "%.1f" | format(d.missed.cost) }} proj{% else %}no cost{% endif %}
+          {% if d.human_response %}<span class="stamp">· {{ d.human_response }} after kickoff</span>{% endif %}
+        {% elif d.human_response %}{{ d.human_response }}
         {% else %}<span class="stamp">—</span>{% endif %}
       </td>
       <td class="num"><a href="/decisions/{{ d.id }}">open</a></td>

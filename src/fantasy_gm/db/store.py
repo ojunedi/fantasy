@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS decisions (
     override_reason TEXT,
     modified_recommendation TEXT,
     outcome TEXT,
-    outcome_recorded_at TEXT
+    outcome_recorded_at TEXT,
+    responded_at TEXT
 );
 """
 
@@ -71,6 +72,11 @@ def _connect(path: Path = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     conn.executescript(CREATE_DECISIONS + CREATE_SCORECARDS + CREATE_NUDGE_LOG)
+    # When the manager responded. Added after the table shipped, so older logs
+    # gain it here; responses recorded before it existed have no time.
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(decisions)")}
+    if "responded_at" not in columns:
+        conn.execute("ALTER TABLE decisions ADD COLUMN responded_at TEXT")
     conn.commit()
     return conn
 
@@ -90,11 +96,16 @@ class DecisionStore:
 
     def save(self, record: DecisionRecord) -> None:
         self._conn.execute(
-            """INSERT OR REPLACE INTO decisions VALUES (
+            """INSERT OR REPLACE INTO decisions (
+                id, created_at, week, season, decision_type,
+                inputs_snapshot, signals_staleness, recommendation,
+                memo, confidence, human_response, override_reason,
+                modified_recommendation, outcome, outcome_recorded_at, responded_at
+            ) VALUES (
                 :id, :created_at, :week, :season, :decision_type,
                 :inputs_snapshot, :signals_staleness, :recommendation,
                 :memo, :confidence, :human_response, :override_reason,
-                :modified_recommendation, :outcome, :outcome_recorded_at
+                :modified_recommendation, :outcome, :outcome_recorded_at, :responded_at
             )""",
             {
                 "id": str(record.id),
@@ -112,6 +123,7 @@ class DecisionStore:
                 "modified_recommendation": json.dumps(record.modified_recommendation) if record.modified_recommendation else None,
                 "outcome": json.dumps(record.outcome) if record.outcome else None,
                 "outcome_recorded_at": record.outcome_recorded_at.isoformat() if record.outcome_recorded_at else None,
+                "responded_at": record.responded_at.isoformat() if record.responded_at else None,
             },
         )
         self._conn.commit()
@@ -128,12 +140,14 @@ class DecisionStore:
             """UPDATE decisions SET
                 human_response = ?,
                 override_reason = ?,
-                modified_recommendation = ?
+                modified_recommendation = ?,
+                responded_at = ?
             WHERE id = ?""",
             (
                 response.value,
                 override_reason,
                 json.dumps(modified_recommendation) if modified_recommendation else None,
+                datetime.utcnow().isoformat(),
                 str(decision_id),
             ),
         )
@@ -245,4 +259,5 @@ class DecisionStore:
             modified_recommendation=json.loads(row["modified_recommendation"]) if row["modified_recommendation"] else None,
             outcome=json.loads(row["outcome"]) if row["outcome"] else None,
             outcome_recorded_at=datetime.fromisoformat(row["outcome_recorded_at"]) if row["outcome_recorded_at"] else None,
+            responded_at=datetime.fromisoformat(row["responded_at"]) if row["responded_at"] else None,
         )

@@ -444,6 +444,8 @@ def decision_summary(record: DecisionRecord) -> dict:
         "abstained": bool(rec.get("abstained")),
         "truncated": bool(rec.get("truncated")),
         "starter_count": len(rec.get("starter_player_ids") or []),
+        # Recorded as an outcome, never a response: silence is not an override (I-09).
+        "missed": (record.outcome or {}).get("missed"),
     }
 
 

@@ -67,7 +67,8 @@ def dump_decisions(conn: sqlite3.Connection) -> str:
         f"SELECT {', '.join(columns)} FROM decisions ORDER BY id"
     ):
         values = ", ".join(_literal(v) for v in row)
-        lines.append(f"INSERT INTO decisions VALUES({values});")
+        # Columns named, so a dump stays loadable as the table gains columns.
+        lines.append(f"INSERT INTO decisions ({', '.join(columns)}) VALUES({values});")
     lines.append("COMMIT;")
     return "\n".join(lines) + "\n"
 

@@ -336,6 +336,7 @@ class DecisionRecord(BaseModel):
     # Outcome — filled in after the week resolves
     outcome: dict[str, Any] | None = None
     outcome_recorded_at: datetime | None = None
+    responded_at: datetime | None = None   # naive UTC; None for responses logged before it was tracked
 
 
 # ---------------------------------------------------------------------------
